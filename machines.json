@@ -1,0 +1,34 @@
+{
+    "machines": [
+        {
+            "name": "Torna",
+            "host": "192.168.1.22",
+            "port": 8193,
+            "user": "",
+            "password": "",
+            "directory": "",
+            "protocol": "focas_mem",
+            "status": "online"
+        },
+        {
+            "name": "Freze",
+            "host": "192.168.1.49",
+            "port": 8193,
+            "user": "",
+            "password": "",
+            "directory": "",
+            "protocol": "focas",
+            "status": "online"
+        },
+        {
+            "name": "Genel Makine",
+            "host": "192.168.1.13",
+            "port": 21,
+            "user": "anonymous",
+            "password": "user@example.com",
+            "directory": "POST",
+            "protocol": "ftp",
+            "status": "online"
+        }
+    ]
+}
