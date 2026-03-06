@@ -2512,7 +2512,10 @@ class CNCTransferApp:
 
                     try:
                         # Tam dosya yolunu oluştur
-                        full_path = f"{selected_dest}/{filename}".replace("//", "/")
+                        if selected_dest and selected_dest != "/":
+                            full_path = f"{selected_dest}/{filename}".lstrip("/")
+                        else:
+                            full_path = filename
 
                         try:
                             focas_raw_write_file(sock, full_path, file_data, progress_callback)
