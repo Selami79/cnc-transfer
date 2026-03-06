@@ -2467,6 +2467,26 @@ class CNCTransferApp:
 
             threading.Thread(target=focas_mem_transfer, daemon=True).start()
         elif protocol == 'focas':
+            # Klasör seçimini thread öncesi yap (GUI thread'inde)
+            if not dest_folder:
+                try:
+                    sock = focas_raw_connect(machine['host'], machine['port'])
+                    if sock:
+                        folders, _ = focas_raw_list_dir(sock, "/")
+                        focas_raw_disconnect(sock)
+                        if folders:
+                            browser = CFCardBrowserDialog(self.root, self, machine)
+                            self.root.wait_window(browser.top)
+                            if browser.selected_path:
+                                dest_folder = browser.selected_path
+                            else:
+                                self.progress_label.configure(text=self.t("status_transfer_canceled"))
+                                return
+                except Exception:
+                    pass
+
+            selected_dest = dest_folder
+
             def focas_transfer():
                 try:
                     self.root.after(0, lambda: self.progress_label.configure(
@@ -2489,23 +2509,10 @@ class CNCTransferApp:
                     sock = focas_raw_connect(machine['host'], machine['port'])
                     if not sock:
                         raise Exception(self.t("msg_focas_connection_failed"))
-                    
-                    try:
-                        # Eğer klasör seçilmemişse, önce ana dizini kontrol et
-                        if not dest_folder:
-                            folders, _ = focas_raw_list_dir(sock, "/");
-                            if folders:
-                                # Kullanıcıya klasör seçtir
-                                browser = CFCardBrowserDialog(self.root, self, machine)
-                                self.root.wait_window(browser.top)
-                                if browser.selected_path:
-                                    dest_folder = browser.selected_path
-                                else:
-                                    self.root.after(0, lambda: self.progress_label.configure(text=self.t("status_transfer_canceled")))
-                                    return # İptal edildi
 
+                    try:
                         # Tam dosya yolunu oluştur
-                        full_path = f"{dest_folder}/{filename}".replace("//", "/")
+                        full_path = f"{selected_dest}/{filename}".replace("//", "/")
 
                         try:
                             focas_raw_write_file(sock, full_path, file_data, progress_callback)
@@ -2534,7 +2541,7 @@ class CNCTransferApp:
                         self.t("title_success"),
                         self.t("msg_transfer_complete_cf_text").format(filename=filename, machine_name=machine["name"]),
                     ))
-                    self.log_transfer(machine['name'], filename, "BAŞARILI", f"Hedef: CF_TEXT ({dest_folder})")
+                    self.log_transfer(machine['name'], filename, "BAŞARILI", f"Hedef: CF_TEXT ({selected_dest})")
 
                 except Exception as e:
                     error_msg = str(e)

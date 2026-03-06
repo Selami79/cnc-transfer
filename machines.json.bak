@@ -28,7 +28,7 @@
             "password": "user@example.com",
             "directory": "POST",
             "protocol": "ftp",
-            "status": "offline"
+            "status": "online"
         }
     ]
 }
