@@ -228,8 +228,256 @@ def focas_raw_list_files(ip, port, timeout=10):
         FOCAS_DLL.cnc_freelibhndl(handle)
 
 class CNCTransferApp:
+    TRANSLATIONS = {
+        # App / Tabs
+        "app_title": {"tr": "CNC Transfer", "en": "CNC Transfer"},
+        "tab_transfer": {"tr": "Transfer", "en": "Transfer"},
+        "tab_machines": {"tr": "Makineler", "en": "Machines"},
+        "tab_new_machine": {"tr": "Yeni Makine", "en": "New Machine"},
+        "tab_settings": {"tr": "Ayarlar", "en": "Settings"},
+
+        # Common buttons / labels
+        "btn_select_file": {"tr": "Dosya Sec", "en": "Select File"},
+        "lbl_no_file_selected": {"tr": "Dosya secilmedi", "en": "No file selected"},
+        "status_ready": {"tr": "Hazir", "en": "Ready"},
+        "btn_send": {"tr": "GONDER", "en": "SEND"},
+        "btn_delete_send": {"tr": "Sil + Gonder", "en": "Delete + Send"},
+        "btn_backup": {"tr": "Yedekle", "en": "Backup"},
+        "btn_refresh": {"tr": "Yenile", "en": "Refresh"},
+        "btn_edit": {"tr": "Duzenle", "en": "Edit"},
+        "btn_delete": {"tr": "Sil", "en": "Delete"},
+        "btn_save": {"tr": "Kaydet", "en": "Save"},
+        "btn_update": {"tr": "Güncelle", "en": "Update"},
+        "btn_test": {"tr": "Test", "en": "Test"},
+        "btn_connect": {"tr": "Baglan", "en": "Connect"},
+        "btn_cancel": {"tr": "Iptal", "en": "Cancel"},
+        "btn_confirm": {"tr": "Onayla", "en": "Confirm"},
+
+        # Settings
+        "settings_general": {"tr": "Genel Ayarlar", "en": "General Settings"},
+        "settings_language": {"tr": "Dil", "en": "Language"},
+        "lang_option_turkce": {"tr": "Turkce", "en": "Turkce"},
+        "lang_option_english": {"tr": "English", "en": "English"},
+        "settings_auto_status_check": {
+            "tr": "Otomatik durum kontrolu (30 sn)",
+            "en": "Auto status check (30 sec)",
+        },
+
+        # Add/Edit Machine form
+        "field_machine_name": {"tr": "Makine Adi", "en": "Machine Name"},
+        "field_ip_address": {"tr": "IP Adresi", "en": "IP Address"},
+        "field_port": {"tr": "Port", "en": "Port"},
+        "field_username": {"tr": "Kullanici", "en": "Username"},
+        "field_password": {"tr": "Sifre", "en": "Password"},
+        "field_protocol": {"tr": "Protokol", "en": "Protocol"},
+        "label_selected_dir": {"tr": "Seçili dizin: {dir}", "en": "Selected directory: {dir}"},
+        "label_selected_dir_empty": {"tr": "Seçili dizin: ", "en": "Selected directory: "},
+
+        # Machine list columns
+        "col_machine": {"tr": "Makine", "en": "Machine"},
+        "col_ip": {"tr": "IP", "en": "IP"},
+        "col_port": {"tr": "Port", "en": "Port"},
+        "col_protocol": {"tr": "Protokol", "en": "Protocol"},
+        "col_status": {"tr": "Durum", "en": "Status"},
+
+        # Protocol labels (UI)
+        "proto_focas_cf_text_long": {"tr": "FOCAS  CF_TEXT", "en": "FOCAS  CF_TEXT"},
+        "proto_focas_cnc_memory_long": {"tr": "FOCAS  CNC BELLEK", "en": "FOCAS  CNC MEMORY"},
+        "proto_cf_text_short": {"tr": "CF_TEXT", "en": "CF_TEXT"},
+        "proto_cnc_memory_short": {"tr": "CNC BELLEK", "en": "CNC MEMORY"},
+
+        # File dialogs
+        "dialog_select_nc_title": {"tr": "NC Dosyası Seç", "en": "Select NC File"},
+        "filetype_nc_files": {"tr": "NC Dosyaları", "en": "NC Files"},
+        "filetype_all_files": {"tr": "Tüm Dosyalar", "en": "All Files"},
+        "dialog_select_backup_folder": {"tr": "Yedek Klasörü Seçin", "en": "Select Backup Folder"},
+
+        # Messagebox titles
+        "title_error": {"tr": "Hata", "en": "Error"},
+        "title_warning": {"tr": "Uyarı", "en": "Warning"},
+        "title_success": {"tr": "Başarılı", "en": "Success"},
+        "title_confirm": {"tr": "Onay", "en": "Confirm"},
+        "title_data_error": {"tr": "Veri Hatası", "en": "Data Error"},
+        "title_file_exists": {"tr": "Dosya Zaten Var", "en": "File Already Exists"},
+        "title_file_exists_short": {"tr": "Dosya Mevcut", "en": "File Exists"},
+
+        # Generic / common messages
+        "msg_select_machine": {"tr": "Lütfen bir makine seçin!", "en": "Please select a machine!"},
+        "msg_select_directory": {"tr": "Lütfen bir dizin seçin!", "en": "Please select a directory!"},
+        "msg_select_file": {"tr": "Lütfen bir dosya seçin!", "en": "Please select a file!"},
+        "msg_ip_empty": {"tr": "IP adresi boş olamaz!", "en": "IP address cannot be empty!"},
+        "msg_machine_name_empty": {"tr": "Makine adı boş olamaz!", "en": "Machine name cannot be empty!"},
+        "msg_machine_name_exists": {
+            "tr": "Bu isimde bir makine zaten var!",
+            "en": "A machine with this name already exists!",
+        },
+        "msg_machine_name_exists_other": {
+            "tr": "Bu isimde başka bir makine zaten var!",
+            "en": "Another machine with this name already exists!",
+        },
+        "msg_machine_added": {"tr": "{name} başarıyla eklendi!", "en": "{name} added successfully!"},
+        "msg_machine_updated": {"tr": "{name} başarıyla güncellendi!", "en": "{name} updated successfully!"},
+        "msg_save_error": {"tr": "Kaydetme hatası: {error}", "en": "Save error: {error}"},
+        "msg_update_error": {"tr": "Güncelleme hatası: {error}", "en": "Update error: {error}"},
+        "msg_connection_ok_select_dir": {
+            "tr": "Bağlantı başarılı! Lütfen bir dizin seçin.",
+            "en": "Connection successful! Please select a directory.",
+        },
+        "msg_connection_error": {"tr": "Bağlantı hatası: {error}", "en": "Connection error: {error}"},
+        "msg_test_ok": {"tr": "Test başarılı!", "en": "Test successful!"},
+        "msg_test_fail": {"tr": "Test başarısız: {error}", "en": "Test failed: {error}"},
+        "msg_cannot_connect_machine": {
+            "tr": "{machine_name} makinesine bağlanılamıyor!",
+            "en": "Cannot connect to machine {machine_name}!",
+        },
+
+        # Corrupted config
+        "msg_config_corrupt_exit": {
+            "tr": "Yapılandırma dosyası ({config_file}) bozuk veya okunamaz durumda!\n\nVeri kaybını önlemek için uygulama kapatılacak.",
+            "en": "Configuration file ({config_file}) is corrupted or unreadable!\n\nThe app will close to prevent data loss.",
+        },
+
+        # Status / progress texts
+        "status_online": {"tr": "ONLINE", "en": "ONLINE"},
+        "status_offline": {"tr": "OFFLINE", "en": "OFFLINE"},
+        "status_connecting_machine": {
+            "tr": "{machine_name} makinesine bağlanılıyor...",
+            "en": "Connecting to {machine_name}...",
+        },
+        "status_connecting_cnc_memory": {"tr": "CNC belleğine bağlanılıyor...", "en": "Connecting to CNC memory..."},
+        "status_connecting_cf_text": {"tr": "CF_TEXT'e bağlanılıyor...", "en": "Connecting to CF_TEXT..."},
+        "status_sending_cnc_memory_progress": {
+            "tr": "CNC belleğine gönderiliyor: {progress:.1f}% ({sent}/{total})",
+            "en": "Sending to CNC memory: {progress:.1f}% ({sent}/{total})",
+        },
+        "status_sending_cf_text_progress": {
+            "tr": "CF_TEXT'e gönderiliyor: {progress:.1f}% ({sent}/{total})",
+            "en": "Sending to CF_TEXT: {progress:.1f}% ({sent}/{total})",
+        },
+        "status_sending_ftp_progress": {
+            "tr": "Gönderiliyor: {progress:.1f}% ({sent}/{total})",
+            "en": "Sending: {progress:.1f}% ({sent}/{total})",
+        },
+        "status_transferring_as_o": {"tr": "O{o_num:04d} olarak transfer ediliyor...", "en": "Transferring as O{o_num:04d}..."},
+        "status_sending_as_o_progress": {"tr": "O{o_num:04d} olarak gönderiliyor: {progress:.1f}%", "en": "Sending as O{o_num:04d}: {progress:.1f}%"},
+        "status_transfer_complete": {"tr": "Transfer tamamlandı!", "en": "Transfer complete!"},
+        "status_transfer_complete_cnc_memory": {"tr": "Transfer tamamlandı! (CNC Bellek)", "en": "Transfer complete! (CNC Memory)"},
+        "status_transfer_complete_cf_text": {"tr": "Transfer tamamlandı! (CF_TEXT)", "en": "Transfer complete! (CF_TEXT)"},
+        "status_transfer_canceled": {"tr": "Transfer iptal edildi.", "en": "Transfer canceled."},
+        "status_canceled_short": {"tr": "İptal edildi", "en": "Canceled"},
+
+        # Backup
+        "status_backup_starting": {"tr": "CNC yedekleme başlatılıyor...", "en": "Starting CNC backup..."},
+        "status_backing_up_item": {"tr": "Yedekleniyor: {item}...", "en": "Backing up: {item}..."},
+        "status_backup_complete": {"tr": "Yedekleme tamamlandı!", "en": "Backup complete!"},
+        "backup_item_parameters": {"tr": "PARAMETRE", "en": "PARAMETERS"},
+        "backup_item_pitch_error": {"tr": "PITCH_ERROR", "en": "PITCH ERROR"},
+        "backup_item_macro_variables": {"tr": "MAKRO_DEGISKEN", "en": "MACRO VARIABLES"},
+        "backup_item_work_offset": {"tr": "WORK_OFFSET", "en": "WORK OFFSET"},
+        "backup_item_nc_programs": {"tr": "NC PROGRAMLAR", "en": "NC PROGRAMS"},
+        "msg_backup_complete": {
+            "tr": "{machine_name} yedekleme tamamlandı!\n\nKonum: {save_dir}\n\nParametre, Pitch Error, Makro Değişken,\nWork Offset ve {count} NC program yedeklendi.",
+            "en": "Backup completed for {machine_name}!\n\nLocation: {save_dir}\n\nParameters, Pitch Error, Macro Variables,\nWork Offset and {count} NC programs were backed up.",
+        },
+        "msg_backup_error": {"tr": "Yedekleme hatası: {error}", "en": "Backup error: {error}"},
+
+        # FOCAS / directory listing UI
+        "msg_cf_card_access_active": {"tr": "(CF kart erişimi aktif)", "en": "(CF card access active)"},
+        "list_header_cnc_memory": {"tr": "--- CNC Bellek ({count} program) ---", "en": "--- CNC Memory ({count} programs) ---"},
+        "list_header_cf_text": {"tr": "--- CF_TEXT ({count} program) ---", "en": "--- CF_TEXT ({count} programs) ---"},
+        "label_target": {"tr": "Hedef: {target}", "en": "Target: {target}"},
+        "msg_focas_connection_success": {
+            "tr": "FOCAS bağlantısı başarılı!\nCNC Bellek: {cnc_count} program\nHedef: {target}",
+            "en": "FOCAS connection successful!\nCNC Memory: {cnc_count} programs\nTarget: {target}",
+        },
+        "msg_focas_connection_failed": {"tr": "FOCAS bağlantısı kurulamadı!", "en": "FOCAS connection could not be established!"},
+        "msg_focas_test_success": {"tr": "FOCAS bağlantı testi başarılı!", "en": "FOCAS connection test successful!"},
+        "msg_focas_test_failed": {"tr": "FOCAS bağlantı testi başarısız!", "en": "FOCAS connection test failed!"},
+        "msg_focas_transfer_error": {"tr": "FOCAS transfer hatası: {error}", "en": "FOCAS transfer error: {error}"},
+
+        # Delete program dialog
+        "dlg_delete_program_title": {"tr": "{machine_name} - Program Sil", "en": "{machine_name} - Delete Program"},
+        "dlg_delete_program_label": {"tr": "Silinecek O Numarası:", "en": "Program number to delete:"},
+        "dlg_delete_program_hint": {"tr": "Örn: 11, 100, 1234", "en": "e.g.: 11, 100, 1234"},
+        "msg_enter_valid_o_number": {"tr": "Geçerli bir O numarası girin!", "en": "Enter a valid O number!"},
+        "msg_confirm_delete_program_500plus": {
+            "tr": "O{o_num:04d} numaralı programı silmek istediğinize emin misiniz?\n\nBu numara 500 ve üzerinde!",
+            "en": "Are you sure you want to delete program O{o_num:04d}?\n\nThis number is 500 or above!",
+        },
+        "msg_confirm_delete_program": {
+            "tr": "O{o_num:04d} numaralı programı silmek istiyor musunuz?",
+            "en": "Do you want to delete program O{o_num:04d}?",
+        },
+        "msg_program_deleted_no_file": {
+            "tr": "O{o_num:04d} silindi.\nTransfer için dosya seçili değil.",
+            "en": "O{o_num:04d} deleted.\nNo file selected for transfer.",
+        },
+        "msg_program_delete_failed_code": {
+            "tr": "O{o_num:04d} silinemedi (kod: {code})",
+            "en": "O{o_num:04d} could not be deleted (code: {code})",
+        },
+
+        # Filename fix dialog
+        "dlg_fix_filename_title": {"tr": "Dosya Adi Duzeltme", "en": "Filename Fix"},
+        "dlg_fix_filename_header": {"tr": "Dosya adi CNC uyumlu degil!", "en": "Filename is not CNC-compatible!"},
+        "dlg_fix_filename_original": {"tr": "Orjinal: {filename}", "en": "Original: {filename}"},
+        "dlg_fix_filename_suggested": {"tr": "Duzeltilmis:", "en": "Fixed:"},
+
+        # Confirmations / overwrite
+        "msg_confirm_delete_machine": {
+            "tr": "{machine_name} makinesini silmek istediğinize emin misiniz?",
+            "en": "Are you sure you want to delete machine {machine_name}?",
+        },
+        "msg_cf_text_file_exists_overwrite": {
+            "tr": "'{filename}' CF_TEXT'te zaten var!\n\nÜzerine yazmak istiyor musunuz?",
+            "en": "'{filename}' already exists in CF_TEXT.\n\nDo you want to overwrite it?",
+        },
+        "msg_ftp_file_exists_overwrite": {
+            "tr": "{filename} dosyası sunucuda zaten mevcut.\n\nÜzerine yazmak istiyor musunuz?",
+            "en": "{filename} already exists on the server.\n\nDo you want to overwrite it?",
+        },
+
+        # Transfer messages
+        "msg_transfer_error": {"tr": "Transfer hatası: {error}", "en": "Transfer error: {error}"},
+        "msg_upload_error": {"tr": "Yükleme hatası: {error}", "en": "Upload error: {error}"},
+        "msg_sent_to_machine_as_o": {
+            "tr": "{filename} → O{o_num:04d} olarak {machine_name} makinesine gönderildi!",
+            "en": "{filename} → sent to {machine_name} as O{o_num:04d}!",
+        },
+        "msg_transfer_complete_ftp": {
+            "tr": "{filename} dosyası {machine_name} makinesine başarıyla gönderildi!",
+            "en": "{filename} sent to {machine_name} successfully!",
+        },
+        "msg_transfer_complete_cnc_memory": {
+            "tr": "{filename} dosyası {machine_name} makinesine (CNC Bellek) başarıyla gönderildi!",
+            "en": "{filename} sent to {machine_name} (CNC Memory) successfully!",
+        },
+        "msg_transfer_complete_cf_text": {
+            "tr": "{filename} dosyası {machine_name} makinesine (CF_TEXT) başarıyla gönderildi!",
+            "en": "{filename} sent to {machine_name} (CF_TEXT) successfully!",
+        },
+
+        # Low-level (raised) errors
+        "err_focas_dll_not_loaded": {"tr": "FOCAS DLL yüklenemedi!", "en": "FOCAS DLL could not be loaded!"},
+        "err_focas_connection_error_code": {"tr": "FOCAS bağlantı hatası (kod: {code})", "en": "FOCAS connection error (code: {code})"},
+        "err_focas_transfer_start_error_code": {"tr": "FOCAS transfer başlatma hatası (kod: {code})", "en": "FOCAS transfer start error (code: {code})"},
+        "err_focas_data_send_error_code": {"tr": "FOCAS veri gönderme hatası (kod: {code})", "en": "FOCAS data send error (code: {code})"},
+        "err_focas_transfer_end_error_code": {"tr": "FOCAS transfer sonlandırma hatası (kod: {code})", "en": "FOCAS transfer end error (code: {code})"},
+        "err_file_content_empty": {"tr": "Dosya içeriği boş!", "en": "File content is empty!"},
+        "err_cnc_memory_full": {"tr": "CNC belleği dolu! Eski programları silip tekrar deneyin.", "en": "CNC memory is full! Delete old programs and try again."},
+        "err_cnc_program_save_failed_conflict": {
+            "tr": "CNC programı kaydedemedi (aynı isim veya O numarası çakışması).",
+            "en": "CNC program could not be saved (name or O-number conflict).",
+        },
+        "err_cnc_program_save_failed_o_conflict": {"tr": "CNC programı kaydedemedi (O numarası çakışması).", "en": "CNC program could not be saved (O-number conflict)."},
+        "err_cnc_mem_transfer_start_error_code": {"tr": "CNC bellek transfer başlatma hatası (kod: {code})", "en": "CNC memory transfer start error (code: {code})"},
+        "err_cnc_mem_data_send_error_code": {"tr": "CNC bellek veri gönderme hatası (kod: {code})", "en": "CNC memory data send error (code: {code})"},
+        "err_cnc_mem_transfer_end_error_code": {"tr": "CNC bellek transfer sonlandırma hatası (kod: {code})", "en": "CNC memory transfer end error (code: {code})"},
+    }
+
     def __init__(self, root):
         self.root = root
+        self.lang = "tr"
 
         # CustomTkinter ayarları
         ctk.set_appearance_mode("light")
@@ -240,7 +488,7 @@ class CNCTransferApp:
         except Exception:
             pass
 
-        self.root.title("CNC Transfer")
+        self.root.title(self.t("app_title"))
         self.root.geometry("1000x700")
         self.root.minsize(860, 580)
 
@@ -248,6 +496,8 @@ class CNCTransferApp:
         self.config_file = os.path.join(self.app_dir, "machines.json")
         self.log_file = os.path.join(self.app_dir, "transfer_history.txt")
         self.machines = self.load_machines()
+        self.lang = self._load_language_from_config()
+        self.root.title(self.t("app_title"))
 
         # CIMCO'dan gelen dosya
         self.cimco_file = " ".join(sys.argv[1:]).strip() if len(sys.argv) > 1 else ""
@@ -281,6 +531,8 @@ class CNCTransferApp:
                     self.cimco_display_name = basename
 
         self.auto_check_var = tk.BooleanVar(value=True)
+        self._save_button_mode = "save"
+        self.selected_directory = ""
 
         # Uyumluluk icin eski renk referanslari
         self.colors = {
@@ -317,11 +569,11 @@ class CNCTransferApp:
         )
         self.notebook.pack(fill='both', expand=True, padx=12, pady=12)
 
-        self.notebook.add("Transfer")
-        self.notebook.add("Makineler")
-        self.notebook.add("Yeni Makine")
-        self.notebook.add("Ayarlar")
-        self.notebook.set("Transfer")
+        self.notebook.add(self.t("tab_transfer"))
+        self.notebook.add(self.t("tab_machines"))
+        self.notebook.add(self.t("tab_new_machine"))
+        self.notebook.add(self.t("tab_settings"))
+        self.notebook.set(self.t("tab_transfer"))
 
         self.create_transfer_tab()
         self.create_machines_tab()
@@ -329,6 +581,30 @@ class CNCTransferApp:
         self.create_settings_tab()
 
         self.check_machine_status()
+
+    def t(self, key):
+        entry = self.TRANSLATIONS.get(key)
+        if not entry:
+            return key
+        return entry.get(self.lang, entry.get("tr", next(iter(entry.values()), key)))
+
+    def _load_language_from_config(self):
+        try:
+            settings = self.machines.get("settings", {}) if isinstance(self.machines, dict) else {}
+            lang = settings.get("language", "tr")
+        except Exception:
+            lang = "tr"
+        return lang if lang in ("tr", "en") else "tr"
+
+    def _save_language_to_config(self):
+        self.machines.setdefault("settings", {})["language"] = self.lang
+        self.save_machines()
+
+    def _lang_to_choice(self, lang):
+        return self.t("lang_option_english") if lang == "en" else self.t("lang_option_turkce")
+
+    def _choice_to_lang(self, choice):
+        return "en" if choice == self.t("lang_option_english") else "tr"
 
     def configure_styles(self):
         """Uyumluluk - ctk kendi stillerini yonetiyor"""
@@ -350,7 +626,10 @@ class CNCTransferApp:
                 
                 # Do not return empty list if file exists but is corrupted
                 from tkinter import messagebox
-                messagebox.showerror("Veri Hatası", f"Yapılandırma dosyası ({self.config_file}) bozuk veya okunamaz durumda!\n\nVeri kaybını önlemek için uygulama kapatılacak.")
+                messagebox.showerror(
+                    self.t("title_data_error"),
+                    self.t("msg_config_corrupt_exit").format(config_file=self.config_file),
+                )
                 sys.exit(1)
         else:
             # Varsayılan makineler
@@ -424,7 +703,7 @@ class CNCTransferApp:
     
     def create_transfer_tab(self):
         """Transfer sekmesi - CustomTkinter modern tasarim"""
-        tab = self.notebook.tab("Transfer")
+        tab = self.notebook.tab(self.t("tab_transfer"))
         tab.configure(fg_color=self.colors['bg'])
 
         # ── Dosya Secimi ──
@@ -440,7 +719,7 @@ class CNCTransferApp:
         file_inner = ctk.CTkFrame(file_frame, fg_color="transparent")
         file_inner.pack(fill='x', padx=12, pady=10)
 
-        ctk.CTkButton(file_inner, text="Dosya Sec", width=120, height=36,
+        ctk.CTkButton(file_inner, text=self.t("btn_select_file"), width=120, height=36,
                       corner_radius=6, font=ctk.CTkFont(size=13, weight="bold"),
                       fg_color=self.colors['primary'], hover_color=self.colors['primary_hover'],
                       command=self.select_file).pack(side='left', padx=(0, 12))
@@ -455,7 +734,7 @@ class CNCTransferApp:
             self.file_label.configure(text=display)
             self.current_file = self.cimco_file
         else:
-            self.file_label.configure(text="Dosya secilmedi", text_color=self.colors['text_dim'])
+            self.file_label.configure(text=self.t("lbl_no_file_selected"), text_color=self.colors['text_dim'])
             self.current_file = ""
 
         # ── Makine Kartlari ──
@@ -475,7 +754,7 @@ class CNCTransferApp:
         )
         progress_frame.pack(fill='x', padx=8, pady=(0, 4))
 
-        self.progress_label = ctk.CTkLabel(progress_frame, text="Hazir",
+        self.progress_label = ctk.CTkLabel(progress_frame, text=self.t("status_ready"),
                                            font=ctk.CTkFont(size=12),
                                            text_color=self.colors['text_muted'], anchor='w')
         self.progress_label.pack(fill='x', padx=14, pady=(8, 2))
@@ -495,7 +774,11 @@ class CNCTransferApp:
         for w in self.machine_buttons_frame.winfo_children():
             w.destroy()
 
-        proto_map = {'ftp': 'FTP', 'focas': 'FOCAS  CF_TEXT', 'focas_mem': 'FOCAS  CNC BELLEK'}
+        proto_map = {
+            'ftp': 'FTP',
+            'focas': self.t("proto_focas_cf_text_long"),
+            'focas_mem': self.t("proto_focas_cnc_memory_long"),
+        }
 
         col = 0
         for machine in self.machines['machines']:
@@ -523,7 +806,7 @@ class CNCTransferApp:
             name_frame = ctk.CTkFrame(card, fg_color="transparent")
             name_frame.pack(fill='x', padx=16, pady=(8, 0))
 
-            status_text = "ONLINE" if online else "OFFLINE"
+            status_text = self.t("status_online") if online else self.t("status_offline")
             ctk.CTkLabel(name_frame, text=machine['name'],
                         font=ctk.CTkFont(size=20, weight="bold"),
                         text_color=self.colors['text']).pack(side='left')
@@ -542,7 +825,7 @@ class CNCTransferApp:
                         ).pack(anchor='w', padx=16, pady=(0, 12))
 
             # GONDER butonu
-            ctk.CTkButton(card, text="GONDER", height=48,
+            ctk.CTkButton(card, text=self.t("btn_send"), height=48,
                          corner_radius=8,
                          font=ctk.CTkFont(size=16, weight="bold"),
                          fg_color=self.colors['primary'] if online else self.colors['secondary'],
@@ -559,22 +842,22 @@ class CNCTransferApp:
                 sub.pack(fill='x', padx=12, pady=(0, 10))
 
                 if protocol == 'focas_mem':
-                    ctk.CTkButton(sub, text="Sil + Gonder", height=32,
-                                 corner_radius=6,
-                                 font=ctk.CTkFont(size=12, weight="bold"),
-                                 fg_color=self.colors['danger'] if online else self.colors['secondary'],
-                                 hover_color=self.colors['danger_hover'] if online else self.colors['secondary'],
+                    ctk.CTkButton(sub, text=self.t("btn_delete_send"), height=32,
+                                  corner_radius=6,
+                                  font=ctk.CTkFont(size=12, weight="bold"),
+                                  fg_color=self.colors['danger'] if online else self.colors['secondary'],
+                                  hover_color=self.colors['danger_hover'] if online else self.colors['secondary'],
                                  text_color="#ffffff",
                                  text_color_disabled=self.colors['text_dim'],
                                  state="normal" if online else "disabled",
                                  command=lambda m=machine: self.focas_mem_delete_dialog(m)
                                  ).pack(side='left', fill='x', expand=True, padx=(0, 3))
 
-                ctk.CTkButton(sub, text="Yedekle", height=32,
-                             corner_radius=6,
-                             font=ctk.CTkFont(size=12, weight="bold"),
-                             fg_color=self.colors['warning'] if online else self.colors['secondary'],
-                             hover_color=self.colors['warning_hover'] if online else self.colors['secondary'],
+                ctk.CTkButton(sub, text=self.t("btn_backup"), height=32,
+                              corner_radius=6,
+                              font=ctk.CTkFont(size=12, weight="bold"),
+                              fg_color=self.colors['warning'] if online else self.colors['secondary'],
+                              hover_color=self.colors['warning_hover'] if online else self.colors['secondary'],
                              text_color=self.colors['text'],
                              text_color_disabled=self.colors['text_dim'],
                              state="normal" if online else "disabled",
@@ -587,7 +870,7 @@ class CNCTransferApp:
     
     def create_machines_tab(self):
         """Makineler sekmesi"""
-        tab = self.notebook.tab("Makineler")
+        tab = self.notebook.tab(self.t("tab_machines"))
         tab.configure(fg_color=self.colors['bg'])
 
         # Treeview (tkinter - ctk'da yok)
@@ -628,11 +911,17 @@ class CNCTransferApp:
         self.machines_tree = ttk.Treeview(tree_frame, columns=columns,
                                          show='tree headings',
                                          style='Chrome.Treeview', height=10)
-        self.machines_tree.heading('#0', text='Makine')
+        self.machines_tree.heading('#0', text=self.t("col_machine"))
         self.machines_tree.column('#0', width=160, minwidth=100)
         widths = {'IP': 140, 'Port': 70, 'Protokol': 130, 'Durum': 90}
+        header_map = {
+            "IP": self.t("col_ip"),
+            "Port": self.t("col_port"),
+            "Protokol": self.t("col_protocol"),
+            "Durum": self.t("col_status"),
+        }
         for c in columns:
-            self.machines_tree.heading(c, text=c)
+            self.machines_tree.heading(c, text=header_map.get(c, c))
             self.machines_tree.column(c, width=widths.get(c, 100), minwidth=60)
         self.machines_tree.pack(fill='both', expand=True, padx=8, pady=8)
 
@@ -651,9 +940,9 @@ class CNCTransferApp:
         btn_inner.pack(fill='x', padx=8, pady=8)
 
         for text, color, hover, text_color, cmd in [
-            ("Yenile", self.colors['primary'], self.colors['primary_hover'], "#ffffff", self.refresh_machines_list),
-            ("Duzenle", self.colors['warning'], self.colors['warning_hover'], self.colors['text'], self.edit_machine),
-            ("Sil", self.colors['danger'], self.colors['danger_hover'], "#ffffff", self.delete_machine),
+            (self.t("btn_refresh"), self.colors['primary'], self.colors['primary_hover'], "#ffffff", self.refresh_machines_list),
+            (self.t("btn_edit"), self.colors['warning'], self.colors['warning_hover'], self.colors['text'], self.edit_machine),
+            (self.t("btn_delete"), self.colors['danger'], self.colors['danger_hover'], "#ffffff", self.delete_machine),
         ]:
             ctk.CTkButton(btn_inner, text=text, width=100, height=32,
                          corner_radius=6, fg_color=color, hover_color=hover,
@@ -665,7 +954,7 @@ class CNCTransferApp:
     
     def create_add_machine_tab(self):
         """Makine ekleme sekmesi"""
-        tab = self.notebook.tab("Yeni Makine")
+        tab = self.notebook.tab(self.t("tab_new_machine"))
         tab.configure(fg_color=self.colors['bg'])
 
         # Scrollable form
@@ -682,11 +971,11 @@ class CNCTransferApp:
         form_inner.pack(fill='x', padx=16, pady=14)
 
         fields = [
-            ("Makine Adi", "name_entry", ""),
-            ("IP Adresi", "host_entry", ""),
-            ("Port", "port_entry", "21"),
-            ("Kullanici", "user_entry", "anonymous"),
-            ("Sifre", "password_entry", "")
+            (self.t("field_machine_name"), "name_entry", ""),
+            (self.t("field_ip_address"), "host_entry", ""),
+            (self.t("field_port"), "port_entry", "21"),
+            (self.t("field_username"), "user_entry", "anonymous"),
+            (self.t("field_password"), "password_entry", ""),
         ]
 
         self.add_form_vars = {}
@@ -707,7 +996,7 @@ class CNCTransferApp:
 
         # Protokol
         protocol_row = len(fields)
-        ctk.CTkLabel(form_inner, text="Protokol",
+        ctk.CTkLabel(form_inner, text=self.t("field_protocol"),
                     font=ctk.CTkFont(size=12),
                     text_color=self.colors['text_muted']).grid(row=protocol_row, column=0, sticky='w', padx=(0, 12), pady=6)
 
@@ -728,7 +1017,7 @@ class CNCTransferApp:
 
         form_inner.grid_columnconfigure(1, weight=1)
 
-        ctk.CTkButton(form_inner, text="Baglan", height=38, corner_radius=6,
+        ctk.CTkButton(form_inner, text=self.t("btn_connect"), height=38, corner_radius=6,
                       fg_color=self.colors['primary'], hover_color=self.colors['primary_hover'],
                       font=ctk.CTkFont(size=13, weight="bold"),
                       command=self.connect_and_list_dirs
@@ -760,7 +1049,7 @@ class CNCTransferApp:
         btn_row = ctk.CTkFrame(self.dir_frame, fg_color="transparent")
         btn_row.pack(pady=(0, 10))
 
-        self.test_button = ctk.CTkButton(btn_row, text="Test", width=90, height=32,
+        self.test_button = ctk.CTkButton(btn_row, text=self.t("btn_test"), width=90, height=32,
                                         corner_radius=6,
                                         fg_color=self.colors['secondary'], hover_color=self.colors['secondary'],
                                         text_color=self.colors['text'],
@@ -770,7 +1059,7 @@ class CNCTransferApp:
                                         command=self.test_connection)
         self.test_button.pack(side='left', padx=(0, 6))
 
-        self.save_button = ctk.CTkButton(btn_row, text="Kaydet", width=90, height=32,
+        self.save_button = ctk.CTkButton(btn_row, text=self.t("btn_save"), width=90, height=32,
                                         corner_radius=6,
                                         fg_color=self.colors['secondary'], hover_color=self.colors['secondary'],
                                         text_color=self.colors['text'],
@@ -785,7 +1074,7 @@ class CNCTransferApp:
     
     def create_settings_tab(self):
         """Ayarlar sekmesi"""
-        tab = self.notebook.tab("Ayarlar")
+        tab = self.notebook.tab(self.t("tab_settings"))
         tab.configure(fg_color=self.colors['bg'])
 
         card = ctk.CTkFrame(
@@ -800,16 +1089,55 @@ class CNCTransferApp:
         card_inner = ctk.CTkFrame(card, fg_color="transparent")
         card_inner.pack(fill='x', padx=16, pady=14)
 
-        ctk.CTkLabel(card_inner, text="Genel Ayarlar",
+        ctk.CTkLabel(card_inner, text=self.t("settings_general"),
                     font=ctk.CTkFont(size=14, weight="bold")).pack(anchor='w', pady=(0, 10))
 
+        lang_row = ctk.CTkFrame(card_inner, fg_color="transparent")
+        lang_row.pack(fill='x', pady=(0, 10))
+        ctk.CTkLabel(lang_row, text=self.t("settings_language"),
+                    font=ctk.CTkFont(size=12),
+                    text_color=self.colors['text_muted']).pack(side='left')
+
+        self.language_var = tk.StringVar(value=self._lang_to_choice(self.lang))
+        self.language_combo = ctk.CTkComboBox(
+            lang_row,
+            values=[self.t("lang_option_turkce"), self.t("lang_option_english")],
+            variable=self.language_var,
+            width=140,
+            height=34,
+            corner_radius=6,
+            font=ctk.CTkFont(size=12),
+            state="readonly",
+            fg_color=self.colors['card_bg'],
+            border_color=self.colors['card_border'],
+            button_color=self.colors['tab_bg'],
+            button_hover_color=self.colors['secondary'],
+            dropdown_fg_color=self.colors['card_bg'],
+            dropdown_hover_color=self.colors['tab_bg'],
+            dropdown_text_color=self.colors['text'],
+            text_color=self.colors['text'],
+            command=self.on_language_changed,
+        )
+        self.language_combo.pack(side='right')
+
         self.auto_check_cb = ctk.CTkCheckBox(card_inner,
-                                            text="Otomatik durum kontrolu (30 sn)",
+                                            text=self.t("settings_auto_status_check"),
                                             variable=self.auto_check_var,
                                             font=ctk.CTkFont(size=12),
                                             corner_radius=4)
         self.auto_check_cb.pack(anchor='w')
         self.theme_var = tk.StringVar(value="dark")
+
+    def on_language_changed(self, choice):
+        self.set_language(self._choice_to_lang(choice))
+
+    def set_language(self, lang):
+        lang = lang if lang in ("tr", "en") else "tr"
+        if lang == self.lang:
+            return
+        self.lang = lang
+        self._save_language_to_config()
+        self.redraw_ui()
 
     def change_theme(self):
         """Temayı değiştir"""
@@ -832,31 +1160,38 @@ class CNCTransferApp:
 
     def redraw_ui(self):
         """Arayüzü yeniden oluştur"""
-        # CTkTabview: sekmeleri sil ve yeniden ekle
-        for tab_name in ["Transfer", "Makineler", "Yeni Makine", "Ayarlar"]:
+        self.root.title(self.t("app_title"))
+        # CTkTabview: sekmeleri sil ve yeniden ekle (dil/tema değişimi dahil)
+        existing_tabs = []
+        try:
+            existing_tabs = list(self.notebook._tab_dict.keys())
+        except Exception:
+            existing_tabs = []
+
+        for tab_name in existing_tabs:
             try:
                 self.notebook.delete(tab_name)
             except:
                 pass
 
-        self.notebook.add("Transfer")
-        self.notebook.add("Makineler")
-        self.notebook.add("Yeni Makine")
-        self.notebook.add("Ayarlar")
+        self.notebook.add(self.t("tab_transfer"))
+        self.notebook.add(self.t("tab_machines"))
+        self.notebook.add(self.t("tab_new_machine"))
+        self.notebook.add(self.t("tab_settings"))
 
         self.create_transfer_tab()
         self.create_machines_tab()
         self.create_add_machine_tab()
         self.create_settings_tab()
 
-        self.notebook.set("Ayarlar")
+        self.notebook.set(self.t("tab_settings"))
         self.refresh_machines_list()
     
     def select_file(self):
         """Dosya seçim dialogu"""
         filename = filedialog.askopenfilename(
-            title="NC Dosyası Seç",
-            filetypes=[("NC Dosyaları", "*.nc"), ("Tüm Dosyalar", "*.*")]
+            title=self.t("dialog_select_nc_title"),
+            filetypes=[(self.t("filetype_nc_files"), "*.nc"), (self.t("filetype_all_files"), "*.*")]
         )
         if filename:
             self.current_file = filename
@@ -878,7 +1213,7 @@ class CNCTransferApp:
         # CF kart dosya listesi için dizin navigasyonu gerekli
         # Şimdilik bağlantı testi ile yetiniyoruz
         if self.focas_check_status(machine):
-            return ["(CF kart erişimi aktif)"]
+            return [self.t("msg_cf_card_access_active")]
         return []
 
     def focas_get_program_list(self, machine, target_path=None):
@@ -942,7 +1277,7 @@ class CNCTransferApp:
         target_path: b'//CNC_MEM/USER/PATH1/' (dahili bellek) veya b'//CNC_MEM/USB_PRG/' (CF kart)
         """
         if FOCAS_DLL is None:
-            raise Exception("FOCAS DLL yüklenemedi!")
+            raise Exception(self.t("err_focas_dll_not_loaded"))
 
         if target_path is None:
             target_path = b'//CNC_MEM/USER/PATH1/'
@@ -953,14 +1288,14 @@ class CNCTransferApp:
 
         ret = FOCAS_DLL.cnc_allclibhndl3(ip, port, ctypes.c_long(10), ctypes.byref(handle))
         if ret != 0:
-            raise Exception(f"FOCAS bağlantı hatası (kod: {ret})")
+            raise Exception(self.t("err_focas_connection_error_code").format(code=ret))
 
         try:
             # Path-based transfer başlat (cnc_dwnstart4)
             cnc_path = ctypes.create_string_buffer(target_path, 256)
             ret = FOCAS_DLL.cnc_dwnstart4(handle, ctypes.c_short(0), cnc_path)
             if ret != 0:
-                raise Exception(f"FOCAS transfer başlatma hatası (kod: {ret})")
+                raise Exception(self.t("err_focas_transfer_start_error_code").format(code=ret))
 
             try:
                 with open(filepath, 'r', encoding='ascii', errors='ignore') as f:
@@ -991,7 +1326,7 @@ class CNCTransferApp:
 
                 # İçerik boşsa hata ver
                 if not lines:
-                    raise Exception("Dosya içeriği boş!")
+                    raise Exception(self.t("err_file_content_empty"))
 
                 # Program gövdesini birleştir
                 body = '\n'.join(lines)
@@ -1018,7 +1353,7 @@ class CNCTransferApp:
                         break
 
                     if ret != 0:
-                        raise Exception(f"FOCAS veri gönderme hatası (kod: {ret})")
+                        raise Exception(self.t("err_focas_data_send_error_code").format(code=ret))
 
                     sent += buf_len.value
                     if progress_callback:
@@ -1028,11 +1363,11 @@ class CNCTransferApp:
                 time.sleep(0.5)
                 ret = FOCAS_DLL.cnc_dwnend4(handle)
                 if ret == 15:
-                    raise Exception("CNC belleği dolu! Eski programları silip tekrar deneyin.")
+                    raise Exception(self.t("err_cnc_memory_full"))
                 elif ret == 5:
-                    raise Exception("CNC programı kaydedemedi (aynı isim veya O numarası çakışması).")
+                    raise Exception(self.t("err_cnc_program_save_failed_conflict"))
                 elif ret != 0:
-                    raise Exception(f"FOCAS transfer sonlandırma hatası (kod: {ret})")
+                    raise Exception(self.t("err_focas_transfer_end_error_code").format(code=ret))
         finally:
             FOCAS_DLL.cnc_freelibhndl(handle)
 
@@ -1042,7 +1377,7 @@ class CNCTransferApp:
         force_o_number: Belirtilirse dosya içeriğindeki O numarasını bu değerle değiştirir.
         """
         if FOCAS_DLL is None:
-            raise Exception("FOCAS DLL yüklenemedi!")
+            raise Exception(self.t("err_focas_dll_not_loaded"))
 
         handle = ctypes.c_ushort(0)
         ip = machine['host'].encode('ascii')
@@ -1050,7 +1385,7 @@ class CNCTransferApp:
 
         ret = FOCAS_DLL.cnc_allclibhndl3(ip, port, ctypes.c_long(10), ctypes.byref(handle))
         if ret != 0:
-            raise Exception(f"FOCAS bağlantı hatası (kod: {ret})")
+            raise Exception(self.t("err_focas_connection_error_code").format(code=ret))
 
         try:
             with open(filepath, 'r', encoding='ascii', errors='ignore') as f:
@@ -1069,7 +1404,7 @@ class CNCTransferApp:
                 lines.pop()
 
             if not lines:
-                raise Exception("Dosya içeriği boş!")
+                raise Exception(self.t("err_file_content_empty"))
 
             # O numarasını değiştir (force_o_number verilmişse)
             if force_o_number is not None:
@@ -1092,7 +1427,7 @@ class CNCTransferApp:
             # Transfer başlat (cnc_dwnstart3, type=0 = NC program)
             ret = FOCAS_DLL.cnc_dwnstart3(handle, ctypes.c_short(0))
             if ret != 0:
-                raise Exception(f"CNC bellek transfer başlatma hatası (kod: {ret})")
+                raise Exception(self.t("err_cnc_mem_transfer_start_error_code").format(code=ret))
 
             try:
                 file_size = len(file_data)
@@ -1113,7 +1448,7 @@ class CNCTransferApp:
                         break
 
                     if ret != 0:
-                        raise Exception(f"CNC bellek veri gönderme hatası (kod: {ret})")
+                        raise Exception(self.t("err_cnc_mem_data_send_error_code").format(code=ret))
 
                     sent += buf_len.value
                     if progress_callback:
@@ -1123,11 +1458,11 @@ class CNCTransferApp:
                 time.sleep(0.5)
                 ret = FOCAS_DLL.cnc_dwnend3(handle)
                 if ret == 15:
-                    raise Exception("CNC belleği dolu! Eski programları silip tekrar deneyin.")
+                    raise Exception(self.t("err_cnc_memory_full"))
                 elif ret == 5:
-                    raise Exception("CNC programı kaydedemedi (O numarası çakışması).")
+                    raise Exception(self.t("err_cnc_program_save_failed_o_conflict"))
                 elif ret != 0:
-                    raise Exception(f"CNC bellek transfer sonlandırma hatası (kod: {ret})")
+                    raise Exception(self.t("err_cnc_mem_transfer_end_error_code").format(code=ret))
         finally:
             FOCAS_DLL.cnc_freelibhndl(handle)
 
@@ -1194,19 +1529,22 @@ class CNCTransferApp:
     def focas_mem_delete_dialog(self, machine):
         """CNC dahili bellekten program silme dialogu (O numarası ile)"""
         if machine['status'] != 'online':
-            messagebox.showerror("Hata", f"{machine['name']} makinesine bağlanılamıyor!")
+            messagebox.showerror(
+                self.t("title_error"),
+                self.t("msg_cannot_connect_machine").format(machine_name=machine["name"]),
+            )
             return
 
         dialog = ctk.CTkToplevel(self.root, fg_color=self.colors['bg'])
-        dialog.title(f"{machine['name']} - Program Sil")
+        dialog.title(self.t("dlg_delete_program_title").format(machine_name=machine["name"]))
         dialog.geometry("380x220")
         dialog.transient(self.root)
         dialog.grab_set()
 
-        ctk.CTkLabel(dialog, text="Silinecek O Numarası:",
+        ctk.CTkLabel(dialog, text=self.t("dlg_delete_program_label"),
                     font=ctk.CTkFont(size=14, weight="bold")).pack(pady=(24, 4))
 
-        ctk.CTkLabel(dialog, text="Örn: 11, 100, 1234",
+        ctk.CTkLabel(dialog, text=self.t("dlg_delete_program_hint"),
                     font=ctk.CTkFont(size=11),
                     text_color=self.colors['text_muted']).pack(pady=(0, 10))
 
@@ -1225,21 +1563,26 @@ class CNCTransferApp:
             # O harfini kaldır
             o_text = o_text.lstrip('Oo')
             if not o_text.isdigit():
-                messagebox.showerror("Hata", "Geçerli bir O numarası girin!", parent=dialog)
+                messagebox.showerror(self.t("title_error"), self.t("msg_enter_valid_o_number"), parent=dialog)
                 return
             o_num = int(o_text)
             if o_num >= 500:
-                if not messagebox.askyesno("Uyarı",
-                    f"O{o_num:04d} numaralı programı silmek istediğinize emin misiniz?\n\n"
-                    f"Bu numara 500 ve üzerinde!", parent=dialog):
+                if not messagebox.askyesno(
+                    self.t("title_warning"),
+                    self.t("msg_confirm_delete_program_500plus").format(o_num=o_num),
+                    parent=dialog,
+                ):
                     return
             else:
-                if not messagebox.askyesno("Onay",
-                    f"O{o_num:04d} numaralı programı silmek istiyor musunuz?", parent=dialog):
+                if not messagebox.askyesno(
+                    self.t("title_confirm"),
+                    self.t("msg_confirm_delete_program").format(o_num=o_num),
+                    parent=dialog,
+                ):
                     return
 
             if FOCAS_DLL is None:
-                messagebox.showerror("Hata", "FOCAS DLL yüklenemedi!", parent=dialog)
+                messagebox.showerror(self.t("title_error"), self.t("err_focas_dll_not_loaded"), parent=dialog)
                 return
 
             handle = ctypes.c_ushort(0)
@@ -1247,7 +1590,11 @@ class CNCTransferApp:
             ret = FOCAS_DLL.cnc_allclibhndl3(ip, ctypes.c_ushort(machine['port']),
                                               ctypes.c_long(10), ctypes.byref(handle))
             if ret != 0:
-                messagebox.showerror("Hata", f"FOCAS bağlantı hatası (kod: {ret})", parent=dialog)
+                messagebox.showerror(
+                    self.t("title_error"),
+                    self.t("err_focas_connection_error_code").format(code=ret),
+                    parent=dialog,
+                )
                 return
 
             ret = FOCAS_DLL.cnc_delete(handle, ctypes.c_short(o_num))
@@ -1255,27 +1602,35 @@ class CNCTransferApp:
 
             if ret == 0:
                 if not self.current_file:
-                    messagebox.showinfo("Başarılı", f"O{o_num:04d} silindi.\nTransfer için dosya seçili değil.", parent=dialog)
+                    messagebox.showinfo(
+                        self.t("title_success"),
+                        self.t("msg_program_deleted_no_file").format(o_num=o_num),
+                        parent=dialog,
+                    )
                     dialog.destroy()
                     return
                 dialog.destroy()
                 # Silinen numaraya dosyayı transfer et
                 self.focas_mem_delete_and_transfer(machine, o_num)
             else:
-                messagebox.showerror("Hata", f"O{o_num:04d} silinemedi (kod: {ret})", parent=dialog)
+                messagebox.showerror(
+                    self.t("title_error"),
+                    self.t("msg_program_delete_failed_code").format(o_num=o_num, code=ret),
+                    parent=dialog,
+                )
 
         o_entry.bind('<Return>', lambda e: do_delete())
 
         btn_frame = ctk.CTkFrame(dialog, fg_color="transparent")
         btn_frame.pack(pady=15)
 
-        ctk.CTkButton(btn_frame, text="Sil + Gonder", command=do_delete,
+        ctk.CTkButton(btn_frame, text=self.t("btn_delete_send"), command=do_delete,
                      width=120, height=36, corner_radius=6,
                      fg_color=self.colors['danger'], hover_color=self.colors['danger_hover'],
                      text_color="#ffffff",
                      font=ctk.CTkFont(size=13, weight="bold")).pack(side='left', padx=5)
 
-        ctk.CTkButton(btn_frame, text="Iptal", command=dialog.destroy,
+        ctk.CTkButton(btn_frame, text=self.t("btn_cancel"), command=dialog.destroy,
                      width=100, height=36, corner_radius=6,
                      fg_color=self.colors['secondary'], hover_color=self.colors['secondary_hover'],
                      text_color=self.colors['text'],
@@ -1287,7 +1642,7 @@ class CNCTransferApp:
         if filename.startswith('~') and filename.lower().endswith('.tmx') and self.cimco_display_name:
             filename = self.cimco_display_name
 
-        self.progress_label.configure(text=f"O{o_num:04d} olarak transfer ediliyor...")
+        self.progress_label.configure(text=self.t("status_transferring_as_o").format(o_num=o_num))
         self.progress_bar.set(0)
 
         def transfer():
@@ -1296,20 +1651,25 @@ class CNCTransferApp:
                     progress = (sent / total) * 100
                     self.root.after(0, lambda: self.progress_bar.set(progress / 100.0))
                     self.root.after(0, lambda: self.progress_label.configure(
-                        text=f"O{o_num:04d} olarak gönderiliyor: {progress:.1f}%"))
+                        text=self.t("status_sending_as_o_progress").format(o_num=o_num, progress=progress)))
 
                 self.focas_mem_upload_file(machine, self.current_file, filename,
                                           progress_callback, force_o_number=o_num)
 
                 self.root.after(0, lambda: self.progress_bar.set(1.0))
-                self.root.after(0, lambda: self.progress_label.configure(text="Transfer tamamlandı! (CNC Bellek)"))
-                self.root.after(0, lambda: messagebox.showinfo("Başarılı",
-                    f"{filename} → O{o_num:04d} olarak {machine['name']} makinesine gönderildi!"))
+                self.root.after(0, lambda: self.progress_label.configure(text=self.t("status_transfer_complete_cnc_memory")))
+                self.root.after(0, lambda: messagebox.showinfo(
+                    self.t("title_success"),
+                    self.t("msg_sent_to_machine_as_o").format(filename=filename, o_num=o_num, machine_name=machine["name"]),
+                ))
                 self.log_transfer(machine['name'], filename, "BAŞARILI", f"O{o_num:04d} olarak CNC Bellek")
 
             except Exception as e:
                 error_msg = str(e)
-                self.root.after(0, lambda: messagebox.showerror("Hata", f"Transfer hatası: {error_msg}"))
+                self.root.after(0, lambda: messagebox.showerror(
+                    self.t("title_error"),
+                    self.t("msg_transfer_error").format(error=error_msg),
+                ))
                 self.root.after(0, lambda: self.progress_label.configure(text=""))
                 self.log_transfer(machine['name'], filename, "HATA", error_msg)
 
@@ -1318,14 +1678,17 @@ class CNCTransferApp:
     def focas_backup(self, machine):
         """FOCAS ile CNC yedekleme (parametre, PLC, makro, offset, programlar)"""
         if machine['status'] != 'online':
-            messagebox.showerror("Hata", f"{machine['name']} makinesine bağlanılamıyor!")
+            messagebox.showerror(
+                self.t("title_error"),
+                self.t("msg_cannot_connect_machine").format(machine_name=machine["name"]),
+            )
             return
 
-        backup_dir = filedialog.askdirectory(title="Yedek Klasörü Seçin")
+        backup_dir = filedialog.askdirectory(title=self.t("dialog_select_backup_folder"))
         if not backup_dir:
             return
 
-        self.progress_label.configure(text="CNC yedekleme başlatılıyor...")
+        self.progress_label.configure(text=self.t("status_backup_starting"))
         self.progress_bar.set(0)
 
         def do_backup():
@@ -1335,7 +1698,7 @@ class CNCTransferApp:
                 port = ctypes.c_ushort(machine['port'])
                 ret = FOCAS_DLL.cnc_allclibhndl3(ip, port, ctypes.c_long(10), ctypes.byref(handle))
                 if ret != 0:
-                    raise Exception(f"FOCAS bağlantı hatası (kod: {ret})")
+                    raise Exception(self.t("err_focas_connection_error_code").format(code=ret))
 
                 try:
                     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -1343,10 +1706,10 @@ class CNCTransferApp:
                     os.makedirs(save_dir, exist_ok=True)
 
                     backup_types = [
-                        (1, "PARAMETRE", "parametre.prm"),
-                        (2, "PITCH_ERROR", "pitch_error.pit"),
-                        (3, "MAKRO_DEGISKEN", "makro_degisken.mac"),
-                        (4, "WORK_OFFSET", "work_offset.wof"),
+                        (1, self.t("backup_item_parameters"), "parametre.prm"),
+                        (2, self.t("backup_item_pitch_error"), "pitch_error.pit"),
+                        (3, self.t("backup_item_macro_variables"), "makro_degisken.mac"),
+                        (4, self.t("backup_item_work_offset"), "work_offset.wof"),
                     ]
 
                     total_steps = len(backup_types) + 1
@@ -1354,7 +1717,7 @@ class CNCTransferApp:
 
                     for data_type, label, bkp_filename in backup_types:
                         self.root.after(0, lambda l=label: self.progress_label.configure(
-                            text=f"Yedekleniyor: {l}..."))
+                            text=self.t("status_backing_up_item").format(item=l)))
                         data = self.focas_read_data(handle, data_type)
                         if data:
                             fpath = os.path.join(save_dir, bkp_filename)
@@ -1366,7 +1729,7 @@ class CNCTransferApp:
 
                     # NC Programları - path-based API ile tümünü oku
                     self.root.after(0, lambda: self.progress_label.configure(
-                        text="Yedekleniyor: NC PROGRAMLAR..."))
+                        text=self.t("status_backing_up_item").format(item=self.t("backup_item_nc_programs"))))
                     prog_dir = os.path.join(save_dir, "programlar")
                     os.makedirs(prog_dir, exist_ok=True)
 
@@ -1418,11 +1781,11 @@ class CNCTransferApp:
 
                     done += 1
                     self.root.after(0, lambda: self.progress_bar.set(1.0))
-                    self.root.after(0, lambda: self.progress_label.configure(text="Yedekleme tamamlandı!"))
-                    self.root.after(0, lambda c=prog_count: messagebox.showinfo("Başarılı",
-                        f"{machine['name']} yedekleme tamamlandı!\n\nKonum: {save_dir}\n\n"
-                        f"Parametre, Pitch Error, Makro Değişken,\n"
-                        f"Work Offset ve {c} NC program yedeklendi."))
+                    self.root.after(0, lambda: self.progress_label.configure(text=self.t("status_backup_complete")))
+                    self.root.after(0, lambda c=prog_count: messagebox.showinfo(
+                        self.t("title_success"),
+                        self.t("msg_backup_complete").format(machine_name=machine["name"], save_dir=save_dir, count=c),
+                    ))
 
                     self.log_transfer(machine['name'], "CNC_YEDEK", "BAŞARILI", save_dir)
 
@@ -1431,7 +1794,10 @@ class CNCTransferApp:
 
             except Exception as e:
                 error_msg = str(e)
-                self.root.after(0, lambda: messagebox.showerror("Hata", f"Yedekleme hatası: {error_msg}"))
+                self.root.after(0, lambda: messagebox.showerror(
+                    self.t("title_error"),
+                    self.t("msg_backup_error").format(error=error_msg),
+                ))
                 self.root.after(0, lambda: self.progress_label.configure(text=""))
                 self.log_transfer(machine['name'], "CNC_YEDEK", "HATA", error_msg)
 
@@ -1475,7 +1841,11 @@ class CNCTransferApp:
         for item in self.machines_tree.get_children():
             self.machines_tree.delete(item)
 
-        proto_map = {'ftp': 'FTP', 'focas': 'CF_TEXT', 'focas_mem': 'CNC BELLEK'}
+        proto_map = {
+            'ftp': 'FTP',
+            'focas': self.t("proto_cf_text_short"),
+            'focas_mem': self.t("proto_cnc_memory_short"),
+        }
         for machine in self.machines['machines']:
             protocol = machine.get('protocol', 'ftp')
             status = machine['status'].upper()
@@ -1491,7 +1861,7 @@ class CNCTransferApp:
         """Seçili makineyi düzenle"""
         selection = self.machines_tree.selection()
         if not selection:
-            messagebox.showwarning("Uyarı", "Lütfen bir makine seçin!")
+            messagebox.showwarning(self.t("title_warning"), self.t("msg_select_machine"))
             return
         
         # Seçili makineyi bul
@@ -1525,7 +1895,8 @@ class CNCTransferApp:
         # Dizin listesini temizle ve mevcut dizini göster
         self.dir_listbox.delete(0, tk.END)
         self.dir_listbox.insert(tk.END, machine['directory'])
-        self.selected_dir_label.configure(text=f"Seçili dizin: {machine['directory']}")
+        self.selected_directory = machine["directory"]
+        self.selected_dir_label.configure(text=self.t("label_selected_dir").format(dir=machine["directory"]))
         
         # Dizin seçimi alanını göster
         self.dir_frame.pack(padx=20, pady=(0, 20), fill='both', expand=True)
@@ -1540,29 +1911,33 @@ class CNCTransferApp:
             text_color=self.colors['text'],
         )
         self.save_button.configure(
-            text="Güncelle",
+            text=self.t("btn_update"),
             state='normal',
             command=lambda: self.update_machine(old_name),
             fg_color=self.colors['success'],
             hover_color=self.colors['success_hover'],
             text_color="#ffffff",
         )
+        self._save_button_mode = "update"
         
         # Sekmeyi değiştir
-        self.notebook.set("Yeni Makine")
+        self.notebook.set(self.t("tab_new_machine"))
         
     def delete_machine(self):
         """Seçili makineyi sil"""
         selection = self.machines_tree.selection()
         if not selection:
-            messagebox.showwarning("Uyarı", "Lütfen bir makine seçin!")
+            messagebox.showwarning(self.t("title_warning"), self.t("msg_select_machine"))
             return
         
         # Onay al
         item = self.machines_tree.item(selection[0])
         machine_name = item['text']
         
-        if messagebox.askyesno("Onay", f"{machine_name} makinesini silmek istediğinize emin misiniz?"):
+        if messagebox.askyesno(
+            self.t("title_confirm"),
+            self.t("msg_confirm_delete_machine").format(machine_name=machine_name),
+        ):
             # Makineyi bul ve sil
             self.machines['machines'] = [m for m in self.machines['machines'] if m['name'] != machine_name]
             self.save_machines()
@@ -1580,7 +1955,7 @@ class CNCTransferApp:
             protocol = self.add_form_vars['protocol_combo'].get().lower()
 
             if not host:
-                messagebox.showerror("Hata", "IP adresi boş olamaz!")
+                messagebox.showerror(self.t("title_error"), self.t("msg_ip_empty"))
                 return
 
             if protocol in ('focas', 'focas_mem'):
@@ -1589,18 +1964,25 @@ class CNCTransferApp:
                     self.dir_listbox.delete(0, tk.END)
                     # CNC dahili bellek programları
                     programs = self.focas_get_program_list(test_machine)
-                    self.dir_listbox.insert(tk.END, f"--- CNC Bellek ({len(programs)} program) ---")
+                    self.dir_listbox.insert(
+                        tk.END,
+                        self.t("list_header_cnc_memory").format(count=len(programs)),
+                    )
                     for prog in programs[:30]:
                         self.dir_listbox.insert(tk.END, f"  {prog}")
                     if protocol == 'focas':
                         # CF_TEXT programları (raw TCP ile) - sadece CF_TEXT modu için
                         cf_programs = self.focas_list_cf_programs(test_machine)
-                        self.dir_listbox.insert(tk.END, f"--- CF_TEXT ({len(cf_programs)} program) ---")
+                        self.dir_listbox.insert(
+                            tk.END,
+                            self.t("list_header_cf_text").format(count=len(cf_programs)),
+                        )
                         for prog in cf_programs[:30]:
                             self.dir_listbox.insert(tk.END, f"  {prog}")
                     self.dir_listbox.select_set(0)
-                    target = "CF_TEXT" if protocol == 'focas' else "CNC Bellek"
-                    self.selected_dir_label.configure(text=f"Hedef: {target}")
+                    target = self.t("proto_cf_text_short") if protocol == 'focas' else self.t("proto_cnc_memory_short")
+                    self.selected_directory = ""
+                    self.selected_dir_label.configure(text=self.t("label_target").format(target=target))
                     self.dir_frame.pack(padx=20, pady=(0, 20), fill='both', expand=True)
                     self.test_button.configure(
                         state='normal',
@@ -1614,12 +1996,15 @@ class CNCTransferApp:
                         hover_color=self.colors['success_hover'],
                         text_color="#ffffff",
                     )
-                    messagebox.showinfo("Başarılı",
-                        f"FOCAS bağlantısı başarılı!\n"
-                        f"CNC Bellek: {len(programs)} program\n"
-                        f"Hedef: {target}")
+                    messagebox.showinfo(
+                        self.t("title_success"),
+                        self.t("msg_focas_connection_success").format(
+                            cnc_count=len(programs),
+                            target=target,
+                        ),
+                    )
                 else:
-                    messagebox.showerror("Hata", "FOCAS bağlantısı kurulamadı!")
+                    messagebox.showerror(self.t("title_error"), self.t("msg_focas_connection_failed"))
                 return
 
             # FTP bağlantısı
@@ -1650,38 +2035,32 @@ class CNCTransferApp:
             # Dizin seçim alanını göster
             self.dir_frame.pack(padx=20, pady=(0, 20), fill='both', expand=True)
 
-            messagebox.showinfo("Başarılı", "Bağlantı başarılı! Lütfen bir dizin seçin.")
+            self.selected_directory = ""
+            self.selected_dir_label.configure(text=self.t("label_selected_dir_empty"))
+            messagebox.showinfo(self.t("title_success"), self.t("msg_connection_ok_select_dir"))
 
         except Exception as e:
-            messagebox.showerror("Hata", f"Bağlantı hatası: {str(e)}")
+            messagebox.showerror(self.t("title_error"), self.t("msg_connection_error").format(error=str(e)))
 
     def on_dir_select(self, event=None):
         """Dizin seçildiğinde"""
         selection = self.dir_listbox.curselection()
         if selection:
             selected_dir = self.dir_listbox.get(selection[0])
-            self.selected_dir_label.configure(text=f"Seçili dizin: {selected_dir}")
+            self.selected_directory = selected_dir
+            self.selected_dir_label.configure(text=self.t("label_selected_dir").format(dir=selected_dir))
             self.test_button.configure(
                 state='normal',
                 fg_color=self.colors['warning'],
                 hover_color=self.colors['warning_hover'],
                 text_color=self.colors['text'],
             )
-            # Eğer güncelleme modundaysa güncelle butonunu aktif tut, değilse kaydet butonunu aktif et
-            if self.save_button['text'] == "Güncelle":
-                 self.save_button.configure(
-                     state='normal',
-                     fg_color=self.colors['success'],
-                     hover_color=self.colors['success_hover'],
-                     text_color="#ffffff",
-                 )
-            else:
-                 self.save_button.configure(
-                     state='normal',
-                     fg_color=self.colors['success'],
-                     hover_color=self.colors['success_hover'],
-                     text_color="#ffffff",
-                 )
+            self.save_button.configure(
+                state='normal',
+                fg_color=self.colors['success'],
+                hover_color=self.colors['success_hover'],
+                text_color="#ffffff",
+            )
 
     def test_connection(self):
         """Bağlantıyı test et"""
@@ -1693,7 +2072,7 @@ class CNCTransferApp:
                 port = int(self.add_form_vars['port_entry'].get())
                 test_machine = {'host': host, 'port': port}
                 if self.focas_check_status(test_machine):
-                    messagebox.showinfo("Başarılı", "FOCAS bağlantı testi başarılı!")
+                    messagebox.showinfo(self.t("title_success"), self.t("msg_focas_test_success"))
                     self.save_button.configure(
                         state='normal',
                         fg_color=self.colors['success'],
@@ -1701,20 +2080,18 @@ class CNCTransferApp:
                         text_color="#ffffff",
                     )
                 else:
-                    messagebox.showerror("Hata", "FOCAS bağlantı testi başarısız!")
+                    messagebox.showerror(self.t("title_error"), self.t("msg_focas_test_failed"))
                 return
 
             selection = self.dir_listbox.curselection()
             if not selection:
-                # Seçili değilse ama label doluysa (düzenleme modu)
-                current_text = self.selected_dir_label.cget("text")
-                if "Seçili dizin: " in current_text and len(current_text) > 14:
-                    selected_dir = current_text.replace("Seçili dizin: ", "")
-                else:
-                    messagebox.showwarning("Uyarı", "Lütfen bir dizin seçin!")
+                selected_dir = self.selected_directory
+                if not selected_dir:
+                    messagebox.showwarning(self.t("title_warning"), self.t("msg_select_directory"))
                     return
             else:
                 selected_dir = self.dir_listbox.get(selection[0])
+                self.selected_directory = selected_dir
 
             # Bağlantı yoksa kur (form verilerinden)
             if not hasattr(self, 'ftp_connection'):
@@ -1739,7 +2116,7 @@ class CNCTransferApp:
             # Test dosyasını sil
             self.ftp_connection.delete(test_filename)
 
-            messagebox.showinfo("Başarılı", "Test başarılı!")
+            messagebox.showinfo(self.t("title_success"), self.t("msg_test_ok"))
             self.save_button.configure(
                 state='normal',
                 fg_color=self.colors['success'],
@@ -1748,7 +2125,7 @@ class CNCTransferApp:
             )
 
         except Exception as e:
-            messagebox.showerror("Hata", f"Test başarısız: {str(e)}")
+            messagebox.showerror(self.t("title_error"), self.t("msg_test_fail").format(error=str(e)))
 
     def update_machine(self, old_name):
         """Mevcut makineyi güncelle"""
@@ -1765,16 +2142,15 @@ class CNCTransferApp:
             if selection:
                 directory = self.dir_listbox.get(selection[0])
             else:
-                 current_text = self.selected_dir_label.cget("text")
-                 directory = current_text.replace("Seçili dizin: ", "")
+                directory = self.selected_directory
 
             if not name:
-                messagebox.showerror("Hata", "Makine adı boş olamaz!")
+                messagebox.showerror(self.t("title_error"), self.t("msg_machine_name_empty"))
                 return
 
             # İsim değiştiyse ve yeni isim başka makinede varsa uyar
             if name != old_name and any(m['name'] == name for m in self.machines['machines']):
-                messagebox.showerror("Hata", "Bu isimde başka bir makine zaten var!")
+                messagebox.showerror(self.t("title_error"), self.t("msg_machine_name_exists_other"))
                 return
 
             # Makineyi güncelle
@@ -1798,14 +2174,14 @@ class CNCTransferApp:
             # GUI'yi güncelle
             self.create_machine_buttons()
             self.refresh_machines_list()
-            
-            messagebox.showinfo("Başarılı", f"{name} başarıyla güncellendi!")
-            
+              
+            messagebox.showinfo(self.t("title_success"), self.t("msg_machine_updated").format(name=name))
+               
             # Transfer sekmesine dön
-            self.notebook.set("Transfer")
-            
+            self.notebook.set(self.t("tab_transfer"))
+             
         except Exception as e:
-            messagebox.showerror("Hata", f"Güncelleme hatası: {str(e)}")
+            messagebox.showerror(self.t("title_error"), self.t("msg_update_error").format(error=str(e)))
 
     def reset_form(self):
         """Formu temizle ve varsayılan ayarlara dön"""
@@ -1818,7 +2194,8 @@ class CNCTransferApp:
         self.add_form_vars['protocol_combo'].set("FTP")
 
         self.dir_listbox.delete(0, tk.END)
-        self.selected_dir_label.configure(text="Seçili dizin: ")
+        self.selected_directory = ""
+        self.selected_dir_label.configure(text=self.t("label_selected_dir_empty"))
         self.test_button.configure(
             state='disabled',
             fg_color=self.colors['secondary'],
@@ -1828,13 +2205,14 @@ class CNCTransferApp:
         
         # Kaydet butonunu eski haline getir
         self.save_button.configure(
-            text="Kaydet",
+            text=self.t("btn_save"),
             command=self.save_new_machine,
             state='disabled',
             fg_color=self.colors['secondary'],
             hover_color=self.colors['secondary'],
             text_color=self.colors['text'],
         )
+        self._save_button_mode = "save"
         self.dir_frame.pack_forget()
 
     def save_new_machine(self):
@@ -1849,18 +2227,18 @@ class CNCTransferApp:
             
             selection = self.dir_listbox.curselection()
             if not selection:
-                messagebox.showwarning("Uyarı", "Lütfen bir dizin seçin!")
+                messagebox.showwarning(self.t("title_warning"), self.t("msg_select_directory"))
                 return
             
             directory = self.dir_listbox.get(selection[0])
             
             if not name:
-                messagebox.showerror("Hata", "Makine adı boş olamaz!")
+                messagebox.showerror(self.t("title_error"), self.t("msg_machine_name_empty"))
                 return
             
             # Makine zaten var mı kontrol et
             if any(m['name'] == name for m in self.machines['machines']):
-                messagebox.showerror("Hata", "Bu isimde bir makine zaten var!")
+                messagebox.showerror(self.t("title_error"), self.t("msg_machine_name_exists"))
                 return
             
             # Protokol bilgisini al
@@ -1888,22 +2266,25 @@ class CNCTransferApp:
             self.create_machine_buttons()
             self.refresh_machines_list()
             
-            messagebox.showinfo("Başarılı", f"{name} başarıyla eklendi!")
+            messagebox.showinfo(self.t("title_success"), self.t("msg_machine_added").format(name=name))
             
             # Transfer sekmesine geç
-            self.notebook.set("Transfer")
+            self.notebook.set(self.t("tab_transfer"))
             
         except Exception as e:
-            messagebox.showerror("Hata", f"Kaydetme hatası: {str(e)}")
+            messagebox.showerror(self.t("title_error"), self.t("msg_save_error").format(error=str(e)))
     
     def transfer_file(self, machine):
         """Dosyayı seçilen makineye transfer et"""
         if not self.current_file:
-            messagebox.showerror("Hata", "Lütfen bir dosya seçin!")
+            messagebox.showerror(self.t("title_error"), self.t("msg_select_file"))
             return
         
         if machine['status'] != 'online':
-            messagebox.showerror("Hata", f"{machine['name']} makinesine bağlanılamıyor!")
+            messagebox.showerror(
+                self.t("title_error"),
+                self.t("msg_cannot_connect_machine").format(machine_name=machine["name"]),
+            )
             return
         
         # Dosya adını al (CIMCO geçici dosya ise gerçek adı kullan)
@@ -1921,19 +2302,19 @@ class CNCTransferApp:
 
         if original_filename != normalized_filename:
             dialog = ctk.CTkToplevel(self.root, fg_color=self.colors['bg'])
-            dialog.title("Dosya Adi Duzeltme")
+            dialog.title(self.t("dlg_fix_filename_title"))
             dialog.geometry("440x230")
             dialog.transient(self.root)
             dialog.grab_set()
 
-            ctk.CTkLabel(dialog, text="Dosya adi CNC uyumlu degil!",
+            ctk.CTkLabel(dialog, text=self.t("dlg_fix_filename_header"),
                         font=ctk.CTkFont(size=14, weight="bold")).pack(pady=(16, 6))
 
-            ctk.CTkLabel(dialog, text=f"Orjinal: {original_filename}",
+            ctk.CTkLabel(dialog, text=self.t("dlg_fix_filename_original").format(filename=original_filename),
                         font=ctk.CTkFont(family="Consolas", size=12),
                         text_color=self.colors['text_muted']).pack(pady=4)
 
-            ctk.CTkLabel(dialog, text="Duzeltilmis:",
+            ctk.CTkLabel(dialog, text=self.t("dlg_fix_filename_suggested"),
                         font=ctk.CTkFont(size=12)).pack(pady=(4, 2))
             filename_var = tk.StringVar(value=normalized_filename)
             filename_entry = ctk.CTkEntry(dialog, textvariable=filename_var, width=340,
@@ -1957,12 +2338,12 @@ class CNCTransferApp:
             button_frame = ctk.CTkFrame(dialog, fg_color="transparent")
             button_frame.pack(pady=16)
 
-            ctk.CTkButton(button_frame, text="Onayla", command=confirm,
+            ctk.CTkButton(button_frame, text=self.t("btn_confirm"), command=confirm,
                          width=110, height=36, corner_radius=6,
                          fg_color=self.colors['primary'], hover_color=self.colors['primary_hover'],
                          text_color="#ffffff",
                          font=ctk.CTkFont(size=13, weight="bold")).pack(side='left', padx=5)
-            ctk.CTkButton(button_frame, text="Iptal", command=cancel,
+            ctk.CTkButton(button_frame, text=self.t("btn_cancel"), command=cancel,
                          width=110, height=36, corner_radius=6,
                          fg_color=self.colors['secondary'], hover_color=self.colors['secondary_hover'],
                          text_color=self.colors['text'],
@@ -1979,7 +2360,9 @@ class CNCTransferApp:
     
     def start_transfer(self, machine, filename):
         """Transfer işlemini başlat"""
-        self.progress_label.configure(text=f"{machine['name']} makinesine bağlanılıyor...")
+        self.progress_label.configure(
+            text=self.t("status_connecting_machine").format(machine_name=machine["name"])
+        )
         self.progress_bar.set(0)
         protocol = machine.get('protocol', 'ftp')
 
@@ -1988,25 +2371,34 @@ class CNCTransferApp:
             def focas_mem_transfer():
                 try:
                     self.root.after(0, lambda: self.progress_label.configure(
-                        text="CNC belleğine bağlanılıyor..."))
+                        text=self.t("status_connecting_cnc_memory")))
 
                     def progress_callback(sent, total):
                         progress = (sent / total) * 100
                         self.root.after(0, lambda: self.progress_bar.set(progress / 100.0))
                         self.root.after(0, lambda: self.progress_label.configure(
-                            text=f"CNC belleğine gönderiliyor: {progress:.1f}% ({self.format_size(sent)}/{self.format_size(total)})"))
+                            text=self.t("status_sending_cnc_memory_progress").format(
+                                progress=progress,
+                                sent=self.format_size(sent),
+                                total=self.format_size(total),
+                            )))
 
                     self.focas_mem_upload_file(machine, self.current_file, filename, progress_callback)
 
                     self.root.after(0, lambda: self.progress_bar.set(1.0))
-                    self.root.after(0, lambda: self.progress_label.configure(text="Transfer tamamlandı! (CNC Bellek)"))
-                    self.root.after(0, lambda: messagebox.showinfo("Başarılı",
-                        f"{filename} dosyası {machine['name']} makinesine (CNC Bellek) başarıyla gönderildi!"))
+                    self.root.after(0, lambda: self.progress_label.configure(text=self.t("status_transfer_complete_cnc_memory")))
+                    self.root.after(0, lambda: messagebox.showinfo(
+                        self.t("title_success"),
+                        self.t("msg_transfer_complete_cnc_memory").format(filename=filename, machine_name=machine["name"]),
+                    ))
                     self.log_transfer(machine['name'], filename, "BAŞARILI", "Hedef: CNC Bellek")
 
                 except Exception as e:
                     error_msg = str(e)
-                    self.root.after(0, lambda: messagebox.showerror("Hata", f"FOCAS transfer hatası: {error_msg}"))
+                    self.root.after(0, lambda: messagebox.showerror(
+                        self.t("title_error"),
+                        self.t("msg_focas_transfer_error").format(error=error_msg),
+                    ))
                     self.root.after(0, lambda: self.progress_label.configure(text=""))
                     self.log_transfer(machine['name'], filename, "HATA", error_msg)
 
@@ -2015,7 +2407,7 @@ class CNCTransferApp:
             def focas_transfer():
                 try:
                     self.root.after(0, lambda: self.progress_label.configure(
-                        text="CF_TEXT'e bağlanılıyor..."))
+                        text=self.t("status_connecting_cf_text")))
 
                     with open(self.current_file, 'rb') as f:
                         file_data = f.read()
@@ -2024,11 +2416,15 @@ class CNCTransferApp:
                         progress = (sent / total) * 100
                         self.root.after(0, lambda: self.progress_bar.set(progress / 100.0))
                         self.root.after(0, lambda: self.progress_label.configure(
-                            text=f"CF_TEXT'e gönderiliyor: {progress:.1f}% ({self.format_size(sent)}/{self.format_size(total)})"))
+                            text=self.t("status_sending_cf_text_progress").format(
+                                progress=progress,
+                                sent=self.format_size(sent),
+                                total=self.format_size(total),
+                            )))
 
                     sock = focas_raw_connect(machine['host'], machine['port'])
                     if not sock:
-                        raise Exception("FOCAS bağlantısı kurulamadı!")
+                        raise Exception(self.t("msg_focas_connection_failed"))
                     try:
                         try:
                             focas_raw_write_file(sock, filename, file_data, progress_callback)
@@ -2037,13 +2433,14 @@ class CNCTransferApp:
                             result = {'confirmed': None}
                             def ask():
                                 result['confirmed'] = messagebox.askyesno(
-                                    "Dosya Mevcut",
-                                    f"'{filename}' CF_TEXT'te zaten var!\n\nÜzerine yazmak istiyor musunuz?")
+                                    self.t("title_file_exists_short"),
+                                    self.t("msg_cf_text_file_exists_overwrite").format(filename=filename),
+                                )
                             self.root.after(0, ask)
                             while result['confirmed'] is None:
                                 time.sleep(0.1)
                             if not result['confirmed']:
-                                self.root.after(0, lambda: self.progress_label.configure(text="Transfer iptal edildi."))
+                                self.root.after(0, lambda: self.progress_label.configure(text=self.t("status_transfer_canceled")))
                                 return
                             # Overwrite modu ile yaz
                             focas_raw_write_file(sock, filename, file_data, progress_callback, overwrite=True)
@@ -2051,14 +2448,19 @@ class CNCTransferApp:
                         focas_raw_disconnect(sock)
 
                     self.root.after(0, lambda: self.progress_bar.set(1.0))
-                    self.root.after(0, lambda: self.progress_label.configure(text="Transfer tamamlandı! (CF_TEXT)"))
-                    self.root.after(0, lambda: messagebox.showinfo("Başarılı",
-                        f"{filename} dosyası {machine['name']} makinesine (CF_TEXT) başarıyla gönderildi!"))
+                    self.root.after(0, lambda: self.progress_label.configure(text=self.t("status_transfer_complete_cf_text")))
+                    self.root.after(0, lambda: messagebox.showinfo(
+                        self.t("title_success"),
+                        self.t("msg_transfer_complete_cf_text").format(filename=filename, machine_name=machine["name"]),
+                    ))
                     self.log_transfer(machine['name'], filename, "BAŞARILI", "Hedef: CF_TEXT")
 
                 except Exception as e:
                     error_msg = str(e)
-                    self.root.after(0, lambda: messagebox.showerror("Hata", f"FOCAS transfer hatası: {error_msg}"))
+                    self.root.after(0, lambda: messagebox.showerror(
+                        self.t("title_error"),
+                        self.t("msg_focas_transfer_error").format(error=error_msg),
+                    ))
                     self.root.after(0, lambda: self.progress_label.configure(text=""))
                     self.log_transfer(machine['name'], filename, "HATA", error_msg)
 
@@ -2086,7 +2488,10 @@ class CNCTransferApp:
                         self.upload_file(ftp, machine, filename)
 
                 except Exception as e:
-                    self.root.after(0, lambda: messagebox.showerror("Hata", f"Transfer hatası: {str(e)}"))
+                    self.root.after(0, lambda: messagebox.showerror(
+                        self.t("title_error"),
+                        self.t("msg_transfer_error").format(error=str(e)),
+                    ))
                     self.root.after(0, lambda: self.progress_label.configure(text=""))
 
             # Arka planda çalıştır
@@ -2094,14 +2499,16 @@ class CNCTransferApp:
     
     def confirm_overwrite(self, ftp, machine, filename):
         """Üzerine yazma onayı"""
-        if messagebox.askyesno("Dosya Zaten Var", 
-                              f"{filename} dosyası sunucuda zaten mevcut.\n\nÜzerine yazmak istiyor musunuz?"):
+        if messagebox.askyesno(
+            self.t("title_file_exists"),
+            self.t("msg_ftp_file_exists_overwrite").format(filename=filename),
+        ):
             # Dosyayı gönder
             threading.Thread(target=lambda: self.upload_file(ftp, machine, filename), 
                            daemon=True).start()
         else:
             ftp.quit()
-            self.progress_label.configure(text="İptal edildi")
+            self.progress_label.configure(text=self.t("status_canceled_short"))
     
     def log_transfer(self, machine_name, filename, status, message=""):
         """Transfer işlemini logla"""
@@ -2126,7 +2533,11 @@ class CNCTransferApp:
                 progress = (uploaded / file_size) * 100
                 self.root.after(0, lambda: self.progress_bar.set(progress / 100.0))
                 self.root.after(0, lambda: self.progress_label.configure(
-                    text=f"Gönderiliyor: {progress:.1f}% ({self.format_size(uploaded)}/{self.format_size(file_size)})"))
+                    text=self.t("status_sending_ftp_progress").format(
+                        progress=progress,
+                        sent=self.format_size(uploaded),
+                        total=self.format_size(file_size),
+                    )))
             
             # Dosyayı gönder
             with open(self.current_file, 'rb') as f:
@@ -2135,16 +2546,21 @@ class CNCTransferApp:
             ftp.quit()
             
             self.root.after(0, lambda: self.progress_bar.set(1.0))
-            self.root.after(0, lambda: self.progress_label.configure(text="Transfer tamamlandı!"))
-            self.root.after(0, lambda: messagebox.showinfo("Başarılı", 
-                                                          f"{filename} dosyası {machine['name']} makinesine başarıyla gönderildi!"))
+            self.root.after(0, lambda: self.progress_label.configure(text=self.t("status_transfer_complete")))
+            self.root.after(0, lambda: messagebox.showinfo(
+                self.t("title_success"),
+                self.t("msg_transfer_complete_ftp").format(filename=filename, machine_name=machine["name"]),
+            ))
             
             # Başarılı logu
             self.log_transfer(machine['name'], filename, "BAŞARILI")
             
         except Exception as e:
             error_msg = str(e)
-            self.root.after(0, lambda: messagebox.showerror("Hata", f"Yükleme hatası: {error_msg}"))
+            self.root.after(0, lambda: messagebox.showerror(
+                self.t("title_error"),
+                self.t("msg_upload_error").format(error=error_msg),
+            ))
             self.root.after(0, lambda: self.progress_label.configure(text=""))
             
             # Hata logu
