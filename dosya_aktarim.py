@@ -227,6 +227,65 @@ def focas_raw_list_files(ip, port, timeout=10):
     finally:
         FOCAS_DLL.cnc_freelibhndl(handle)
 
+def focas_raw_list_dir(sock, path):
+    """CF karttaki dosya ve klasörleri listele (raw FOCAS TCP)
+
+    Protokol: 0x01F4 (cnc_rdpdf_alldir)
+    """
+    path_bytes = path.encode('ascii')
+    body = path_bytes + b'\x00' * (256 - len(path_bytes))
+    pkt = FOCAS_MAGIC + b'\x00\x01' + b'\x01\xF4' + struct.pack('>H', len(body)) + body
+    sock.sendall(pkt)
+    sock.settimeout(10)
+    resp = sock.recv(65536)
+
+    if not resp or len(resp) < 10 or resp[6:8] != b'\x01\xF5':
+        return [], []
+
+    # Yanıtı parse et
+    files = []
+    folders = []
+    
+    # 24 byte'lık bloklar halinde oku
+    offset = 10 
+    while offset + 24 <= len(resp):
+        chunk = resp[offset:offset+24]
+        item_type = struct.unpack('<H', chunk[0:2])[0]
+        name_bytes = chunk[2:22]
+        
+        try:
+            name = name_bytes.split(b'\x00', 1)[0].decode('ascii')
+        except UnicodeDecodeError:
+            offset += 24
+            continue
+
+        if item_type == 0: # Klasör
+            if name not in ('.', '..'):
+                folders.append(name)
+        elif item_type == 1: # Dosya
+            files.append(name)
+
+        offset += 24
+
+    return sorted(folders), sorted(files)
+
+def focas_raw_delete_file(sock, file_path):
+    """CF karttan dosya sil (raw FOCAS TCP)
+
+    Protokol: 0x01F6 (cnc_pdf_del)
+    """
+    path_bytes = file_path.encode('ascii')
+    body = path_bytes + b'\x00' * (256 - len(path_bytes))
+    pkt = FOCAS_MAGIC + b'\x00\x01' + b'\x01\xF6' + struct.pack('>H', len(body)) + body
+    sock.sendall(pkt)
+    sock.settimeout(10)
+    resp = sock.recv(65536)
+    # 0x01F7 silme işleminden sonraki yanıt kodudur
+    if resp and len(resp) >= 8 and resp[6:8] == b'\x01\xF7':
+        return True
+    return False
+
+
 class CNCTransferApp:
     TRANSLATIONS = {
         # App / Tabs
@@ -494,7 +553,7 @@ class CNCTransferApp:
 
         self.app_dir = os.path.dirname(os.path.abspath(__file__))
         self.config_file = os.path.join(self.app_dir, "machines.json")
-        self.log_file = os.path.join(self.app_dir, "transfer_history.txt")
+        self.log_file = os.path.join(self.app_dir, "transfer_history.log")
         self.machines = self.load_machines()
         self.lang = self._load_language_from_config()
         self.root.title(self.t("app_title"))
@@ -2293,7 +2352,11 @@ class CNCTransferApp:
             original_filename = self.cimco_display_name
         protocol = machine.get('protocol', 'ftp')
 
-        if protocol in ('focas', 'focas_mem'):
+        if protocol == 'focas':
+            self.start_transfer(machine, original_filename)
+            return
+
+        if protocol in ('focas_mem'):
             self.start_transfer(machine, original_filename)
             return
 
@@ -2358,7 +2421,7 @@ class CNCTransferApp:
 
         self.start_transfer(machine, normalized_filename)
     
-    def start_transfer(self, machine, filename):
+    def start_transfer(self, machine, filename, dest_folder=""):
         """Transfer işlemini başlat"""
         self.progress_label.configure(
             text=self.t("status_connecting_machine").format(machine_name=machine["name"])
@@ -2413,28 +2476,46 @@ class CNCTransferApp:
                         file_data = f.read()
 
                     def progress_callback(sent, total):
-                        progress = (sent / total) * 100
-                        self.root.after(0, lambda: self.progress_bar.set(progress / 100.0))
-                        self.root.after(0, lambda: self.progress_label.configure(
-                            text=self.t("status_sending_cf_text_progress").format(
-                                progress=progress,
-                                sent=self.format_size(sent),
-                                total=self.format_size(total),
-                            )))
+                        if total > 0:
+                            progress = (sent / total) * 100
+                            self.root.after(0, lambda: self.progress_bar.set(progress / 100.0))
+                            self.root.after(0, lambda: self.progress_label.configure(
+                                text=self.t("status_sending_cf_text_progress").format(
+                                    progress=progress,
+                                    sent=self.format_size(sent),
+                                    total=self.format_size(total),
+                                )))
 
                     sock = focas_raw_connect(machine['host'], machine['port'])
                     if not sock:
                         raise Exception(self.t("msg_focas_connection_failed"))
+                    
                     try:
+                        # Eğer klasör seçilmemişse, önce ana dizini kontrol et
+                        if not dest_folder:
+                            folders, _ = focas_raw_list_dir(sock, "/");
+                            if folders:
+                                # Kullanıcıya klasör seçtir
+                                browser = CFCardBrowserDialog(self.root, self, machine)
+                                self.root.wait_window(browser.top)
+                                if browser.selected_path:
+                                    dest_folder = browser.selected_path
+                                else:
+                                    self.root.after(0, lambda: self.progress_label.configure(text=self.t("status_transfer_canceled")))
+                                    return # İptal edildi
+
+                        # Tam dosya yolunu oluştur
+                        full_path = f"{dest_folder}/{filename}".replace("//", "/")
+
                         try:
-                            focas_raw_write_file(sock, filename, file_data, progress_callback)
+                            focas_raw_write_file(sock, full_path, file_data, progress_callback)
                         except FileExistsError:
                             # Dosya var - kullanıcıya sor
                             result = {'confirmed': None}
                             def ask():
                                 result['confirmed'] = messagebox.askyesno(
                                     self.t("title_file_exists_short"),
-                                    self.t("msg_cf_text_file_exists_overwrite").format(filename=filename),
+                                    self.t("msg_cf_text_file_exists_overwrite").format(filename=full_path),
                                 )
                             self.root.after(0, ask)
                             while result['confirmed'] is None:
@@ -2443,7 +2524,7 @@ class CNCTransferApp:
                                 self.root.after(0, lambda: self.progress_label.configure(text=self.t("status_transfer_canceled")))
                                 return
                             # Overwrite modu ile yaz
-                            focas_raw_write_file(sock, filename, file_data, progress_callback, overwrite=True)
+                            focas_raw_write_file(sock, full_path, file_data, progress_callback, overwrite=True)
                     finally:
                         focas_raw_disconnect(sock)
 
@@ -2453,7 +2534,7 @@ class CNCTransferApp:
                         self.t("title_success"),
                         self.t("msg_transfer_complete_cf_text").format(filename=filename, machine_name=machine["name"]),
                     ))
-                    self.log_transfer(machine['name'], filename, "BAŞARILI", "Hedef: CF_TEXT")
+                    self.log_transfer(machine['name'], filename, "BAŞARILI", f"Hedef: CF_TEXT ({dest_folder})")
 
                 except Exception as e:
                     error_msg = str(e)
@@ -2573,6 +2654,125 @@ class CNCTransferApp:
                 return f"{size:.1f} {unit}"
             size /= 1024
         return f"{size:.1f} TB"
+
+class CFCardBrowserDialog:
+    def __init__(self, parent, app, machine):
+        self.parent = parent
+        self.app = app
+        self.machine = machine
+        self.current_path = "/"
+        self.selected_path = ""
+
+        self.top = ctk.CTkToplevel(parent, fg_color=app.colors['bg'])
+        self.top.title(f"CF Card Browser - {machine['name']}")
+        self.top.geometry("500x400")
+        self.top.transient(parent)
+        self.top.grab_set()
+
+        self.path_label = ctk.CTkLabel(self.top, text=self.current_path,
+                                       font=ctk.CTkFont(family="Consolas", size=12))
+        self.path_label.pack(pady=5)
+
+        self.listbox = tk.Listbox(self.top, height=15,
+                                     bg=app.colors['card_bg'], fg=app.colors['text'],
+                                     font=('Segoe UI', 10),
+                                     selectbackground=app.colors['primary'],
+                                     selectforeground='#ffffff',
+                                     relief='flat', bd=0, highlightthickness=0)
+        self.listbox.pack(fill='both', expand=True, padx=10)
+        self.listbox.bind('<Double-Button-1>', self.on_double_click)
+
+        button_frame = ctk.CTkFrame(self.top, fg_color="transparent")
+        button_frame.pack(pady=10)
+        
+        ctk.CTkButton(button_frame, text="Up", command=self.go_up).pack(side='left', padx=5)
+        ctk.CTkButton(button_frame, text="Delete", command=self.delete_selected).pack(side='left', padx=5)
+        ctk.CTkButton(button_frame, text="Select Folder", command=self.select_folder).pack(side='left', padx=5)
+        ctk.CTkButton(button_frame, text="Cancel", command=self.top.destroy).pack(side='left', padx=5)
+
+        self.refresh_list()
+
+    def refresh_list(self):
+        self.listbox.delete(0, tk.END)
+        self.path_label.configure(text=self.current_path)
+
+        try:
+            sock = focas_raw_connect(self.machine['host'], self.machine['port'])
+            if not sock:
+                messagebox.showerror("Error", "Could not connect to machine.")
+                self.top.destroy()
+                return
+
+            try:
+                folders, files = focas_raw_list_dir(sock, self.current_path)
+                for folder in folders:
+                    self.listbox.insert(tk.END, f"📁 {folder}")
+                for file in files:
+                    self.listbox.insert(tk.END, f"📄 {file}")
+            finally:
+                focas_raw_disconnect(sock)
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to list directory: {e}")
+            self.top.destroy()
+    
+    def go_up(self):
+        if self.current_path != "/":
+            self.current_path = "/".join(self.current_path.split('/')[:-2]) + "/"
+            if self.current_path == "//":
+                self.current_path = "/"
+            self.refresh_list()
+            
+    def on_double_click(self, event):
+        selection = self.listbox.curselection()
+        if not selection:
+            return
+        
+        item = self.listbox.get(selection[0])
+        if item.startswith("📁"):
+            folder_name = item.split(" ", 1)[1]
+            if self.current_path == "/":
+                self.current_path += folder_name + "/"
+            else:
+                self.current_path += folder_name + "/"
+            self.refresh_list()
+
+    def delete_selected(self):
+        selection = self.listbox.curselection()
+        if not selection:
+            return
+
+        item = self.listbox.get(selection[0])
+        if not item.startswith("📄"):
+            messagebox.showinfo("Info", "Only files can be deleted.")
+            return
+
+        file_name = item.split(" ", 1)[1]
+        full_path = f"{self.current_path}{file_name}".replace("//", "/")
+        
+        if not messagebox.askyesno("Confirm", f"Are you sure you want to delete {full_path}?"):
+            return
+
+        try:
+            sock = focas_raw_connect(self.machine['host'], self.machine['port'])
+            if not sock:
+                messagebox.showerror("Error", "Could not connect to machine.")
+                return
+
+            try:
+                if focas_raw_delete_file(sock, full_path):
+                    messagebox.showinfo("Success", f"{full_path} deleted successfully.")
+                    self.refresh_list()
+                else:
+                    messagebox.showerror("Error", f"Failed to delete {full_path}.")
+            finally:
+                focas_raw_disconnect(sock)
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to delete file: {e}")
+
+    def select_folder(self):
+        self.selected_path = self.current_path
+        self.top.destroy()
+
 
 def main():
     root = ctk.CTk()
