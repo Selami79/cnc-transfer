@@ -34,6 +34,25 @@ except Exception as e:
 # ---- Raw FOCAS TCP Protokolü (CF Kart erişimi için) ----
 FOCAS_MAGIC = b'\xa0\xa0\xa0\xa0'
 
+def _recv_exact(sock, n):
+    """TCP akışından tam n bayt oku (fragmantasyona dayanıklı)"""
+    buf = bytearray()
+    while len(buf) < n:
+        chunk = sock.recv(n - len(buf))
+        if not chunk:
+            break
+        buf += chunk
+    return bytes(buf)
+
+def focas_recv_packet(sock):
+    """Tek bir FOCAS paketini eksiksiz oku (header 10 bayt + body_len)."""
+    header = _recv_exact(sock, 10)
+    if len(header) < 10 or header[0:4] != FOCAS_MAGIC:
+        return header
+    body_len = struct.unpack('>H', header[8:10])[0]
+    body = _recv_exact(sock, body_len) if body_len else b''
+    return header + body
+
 def focas_raw_connect(ip, port, timeout=10):
     """Raw TCP ile FOCAS bağlantısı aç"""
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -165,6 +184,145 @@ def focas_raw_read_file(sock, filename, progress_callback=None):
             offset += 1
 
     return file_data
+
+
+# ---- CF_TEXT yönetim kanalı (0x2101 / 02d7): listeleme + silme ----
+# Fanuc 0i-MF (Freze) üzerinde canlı doğrulandı. Listeleme ve silme MODE-2 connect
+# gerektirir (handshake son baytı 0x02); yazma MODE-1 ile yapılır.
+# Silme paketi FANUC Program Transfer Tool trafiğinden birebir alınmıştır.
+_CF_MGMT_HDR = FOCAS_MAGIC + b'\x00\x01\x21\x01\x00\x1e\x00\x01\x00\x1c\x00\x01'
+_CF_MGMT_0018 = _CF_MGMT_HDR + b'\x00\x01\x00\x18' + b'\x00' * 20   # session init
+_CF_MGMT_00AE = _CF_MGMT_HDR + b'\x00\x01\x00\xae' + b'\x00' * 20   # liste reset
+_CF_LIST_INIT = _CF_MGMT_HDR + b'\x00\x01\x02\xd7\x00\x00\x00\x01\x00\x00\x00\x00' + b'\x00' * 12
+_CF_LIST_READ = _CF_MGMT_HDR + b'\x00\x01\x02\xd7\x00\x00\x00\x00\x00\x00\x00\x01' + b'\x00' * 12
+_CF_LIST_NEXT = _CF_MGMT_HDR + b'\x00\x01\x02\xd7\x00\x00\x00\x00\xff\xff\xff\xff' + b'\x00' * 12
+
+
+def focas_raw_connect_mgmt(ip, port, timeout=10):
+    """Yönetim kanalı (0x2101) için MODE-2 FOCAS bağlantısı aç."""
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.settimeout(timeout)
+    try:
+        sock.connect((ip, port))
+        sock.sendall(FOCAS_MAGIC + b'\x00\x01\x01\x01\x00\x02\x00\x02')
+        resp = sock.recv(65536)
+        if resp and len(resp) >= 8 and resp[6:8] == b'\x01\x02':
+            return sock
+    except Exception:
+        pass
+    try:
+        sock.close()
+    except Exception:
+        pass
+    return None
+
+
+def _cf_mgmt_status(resp):
+    """02d7 yanıtındaki durum kodu (0 = başarılı). Geçersiz yanıtta None."""
+    if not resp or len(resp) < 22 or resp[6:8] != b'\x21\x02' or resp[16:20] != b'\x00\x01\x02\xd7':
+        return None
+    return struct.unpack('>H', resp[20:22])[0]
+
+
+def _parse_cf_entry(pkt):
+    """02d7 yanıtındaki 32 baytlık girdiden dosya adını çıkar.
+
+    Girdi: id(4) + tarih(6) + alan(2) + isim (null-term, offset 12).
+    """
+    k = pkt.find(b'\x02\xd7')
+    if k < 0 or pkt[k + 6:k + 10] != b'\x00\x00\x00\x20':
+        return None
+    entry = pkt[k + 10:k + 10 + 0x20]
+    if len(entry) < 13:
+        return None
+    name = bytearray()
+    for b in entry[12:]:
+        if b == 0:
+            break
+        if 32 <= b < 127:
+            name.append(b)
+        else:
+            return None
+    s = name.decode('ascii', 'ignore').strip()
+    return s or None  # uzantısız adlar da geçerli; liste sonu boş gelir
+
+
+def focas_raw_list_cf_files(ip, port, timeout=10, max_files=500):
+    """CF_TEXT karttaki dosya adlarını listele (yönetim kanalı, 02d7)."""
+    sock = focas_raw_connect_mgmt(ip, port, timeout=timeout)
+    if not sock:
+        raise ConnectionError("FOCAS")
+    files, seen = [], set()
+    try:
+        sock.settimeout(min(timeout, 4))
+        sock.sendall(_CF_MGMT_0018); focas_recv_packet(sock)
+        sock.sendall(_CF_MGMT_00AE); focas_recv_packet(sock)
+        sock.sendall(_CF_LIST_INIT); focas_recv_packet(sock)
+        stale = 0
+        for i in range(max_files):
+            sock.sendall(_CF_LIST_READ if i == 0 else _CF_LIST_NEXT)
+            try:
+                resp = focas_recv_packet(sock)
+            except socket.timeout:
+                break
+            if not resp or len(resp) < 12:
+                break
+            name = _parse_cf_entry(resp)
+            if name and name not in seen:
+                seen.add(name)
+                files.append(name)
+                stale = 0
+            else:
+                stale += 1
+                if stale >= 5:  # 5 tur yeni dosya yok = liste bitti
+                    break
+    finally:
+        focas_raw_disconnect(sock)
+    return files
+
+
+def _cf_delete_packet(filename):
+    """CF_TEXT silme paketi (02d7, param1=3 + dosya adı).
+
+    PTT kaydından: a0a0a0a0 0001 2101 003e | 0001 003c 0001 0001 02d7
+                   00000003 + 12x00 | 00000020 | isim[32] (null-term)
+    """
+    name = filename.encode('ascii')
+    if not name or len(name) > 31:
+        raise ValueError(filename)
+    body = (b'\x00\x01\x00\x3c\x00\x01\x00\x01\x02\xd7'
+            + b'\x00\x00\x00\x03' + b'\x00' * 12
+            + b'\x00\x00\x00\x20' + name + b'\x00' * (32 - len(name)))
+    return FOCAS_MAGIC + b'\x00\x01\x21\x01' + struct.pack('>H', len(body)) + body
+
+
+def focas_raw_cf_delete(ip, port, filename, timeout=10):
+    """CF_TEXT karttan tek dosya sil (FANUC Program Transfer Tool ile aynı protokol).
+
+    Dönüş: CNC durum kodu (0 = silindi, 5 = dosya yok veya CNC'de seçili/kullanımda),
+    bağlantı/hazırlık hatasında None.
+    """
+    sock = focas_raw_connect_mgmt(ip, port, timeout=timeout)
+    if not sock:
+        return None
+    try:
+        sock.settimeout(min(timeout, 5))
+        sock.sendall(_CF_MGMT_0018); focas_recv_packet(sock)
+        sock.sendall(_CF_MGMT_00AE); focas_recv_packet(sock)
+        # PTT davranışı: init 5 dönerse bir read yapıp init'i tekrarla
+        for _ in range(3):
+            sock.sendall(_CF_LIST_INIT)
+            if _cf_mgmt_status(focas_recv_packet(sock)) == 0:
+                break
+            sock.sendall(_CF_LIST_READ); focas_recv_packet(sock)
+        else:
+            return None
+        sock.sendall(_cf_delete_packet(filename))
+        return _cf_mgmt_status(focas_recv_packet(sock))
+    except (socket.timeout, OSError):
+        return None
+    finally:
+        focas_raw_disconnect(sock)
 
 
 def focas_raw_list_files(ip, port, timeout=10):
@@ -473,6 +631,37 @@ class CNCTransferApp:
         "err_cnc_mem_transfer_start_error_code": {"tr": "CNC bellek transfer başlatma hatası (kod: {code})", "en": "CNC memory transfer start error (code: {code})"},
         "err_cnc_mem_data_send_error_code": {"tr": "CNC bellek veri gönderme hatası (kod: {code})", "en": "CNC memory data send error (code: {code})"},
         "err_cnc_mem_transfer_end_error_code": {"tr": "CNC bellek transfer sonlandırma hatası (kod: {code})", "en": "CNC memory transfer end error (code: {code})"},
+
+        # CF_TEXT file manager (list + delete)
+        "btn_cf_files": {"tr": "CF Dosyalar", "en": "CF Files"},
+        "dlg_cf_files_title": {"tr": "{machine_name} - CF Kart Dosyaları", "en": "{machine_name} - CF Card Files"},
+        "cf_loading": {"tr": "Yükleniyor...", "en": "Loading..."},
+        "cf_file_count": {"tr": "{count} dosya", "en": "{count} files"},
+        "cf_no_files": {"tr": "Dosya bulunamadı.", "en": "No files found."},
+        "cf_list_error": {
+            "tr": "Liste alınamadı. Makine açık mı, panelde CF kart seçili mi?",
+            "en": "Could not read the list. Is the machine on and the CF card selected on the panel?",
+        },
+        "cf_deleting": {"tr": "Siliniyor: {filename}...", "en": "Deleting: {filename}..."},
+        "msg_confirm_delete_cf_file": {
+            "tr": "'{filename}' dosyası CF karttan kalıcı olarak silinsin mi?\n\nBu işlem geri alınamaz!",
+            "en": "Permanently delete '{filename}' from the CF card?\n\nThis cannot be undone!",
+        },
+        "msg_cf_deleted": {"tr": "Silindi: {filename}", "en": "Deleted: {filename}"},
+        "msg_cf_delete_not_found": {
+            "tr": "'{filename}' silinemedi: kartta yok veya CNC'de seçili/kullanımda (kod: 5).",
+            "en": "'{filename}' could not be deleted: not on the card or selected/in use on the CNC (code: 5).",
+        },
+        "msg_cf_delete_failed_code": {
+            "tr": "'{filename}' silinemedi (CNC kodu: {code}).",
+            "en": "'{filename}' could not be deleted (CNC code: {code}).",
+        },
+        "msg_cf_delete_no_response": {
+            "tr": "'{filename}' silinemedi: CNC bağlantısı kurulamadı veya yanıt vermedi.",
+            "en": "'{filename}' could not be deleted: no connection or no response from the CNC.",
+        },
+        "status_deleted": {"tr": "SILINDI", "en": "DELETED"},
+        "btn_close": {"tr": "Kapat", "en": "Close"},
     }
 
     def __init__(self, root):
@@ -852,6 +1041,18 @@ class CNCTransferApp:
                                  state="normal" if online else "disabled",
                                  command=lambda m=machine: self.focas_mem_delete_dialog(m)
                                  ).pack(side='left', fill='x', expand=True, padx=(0, 3))
+
+                if protocol == 'focas':
+                    ctk.CTkButton(sub, text=self.t("btn_cf_files"), height=32,
+                                  corner_radius=6,
+                                  font=ctk.CTkFont(size=12, weight="bold"),
+                                  fg_color=self.colors['danger'] if online else self.colors['secondary'],
+                                  hover_color=self.colors['danger_hover'] if online else self.colors['secondary'],
+                                  text_color="#ffffff",
+                                  text_color_disabled=self.colors['text_dim'],
+                                  state="normal" if online else "disabled",
+                                  command=lambda m=machine: self.open_cf_file_manager(m)
+                                  ).pack(side='left', fill='x', expand=True, padx=(0, 3))
 
                 ctk.CTkButton(sub, text=self.t("btn_backup"), height=32,
                               corner_radius=6,
@@ -1635,6 +1836,122 @@ class CNCTransferApp:
                      fg_color=self.colors['secondary'], hover_color=self.colors['secondary_hover'],
                      text_color=self.colors['text'],
                      font=ctk.CTkFont(size=12)).pack(side='left', padx=5)
+
+    def open_cf_file_manager(self, machine):
+        """CF_TEXT kart dosya yöneticisi: listele + tek tek sil."""
+        win = ctk.CTkToplevel(self.root, fg_color=self.colors['bg'])
+        win.title(self.t("dlg_cf_files_title").format(machine_name=machine['name']))
+        win.geometry("520x540")
+        win.transient(self.root)
+        win.grab_set()
+
+        header = ctk.CTkFrame(win, fg_color=self.colors['card_bg'], corner_radius=12,
+                              border_width=1, border_color=self.colors['card_border'])
+        header.pack(fill='x', padx=12, pady=(12, 6))
+        ctk.CTkLabel(header, text="CF_TEXT", font=ctk.CTkFont(size=16, weight="bold"),
+                     text_color=self.colors['text']).pack(side='left', padx=16, pady=12)
+        ctk.CTkLabel(header, text=f"{machine['host']}:{machine['port']}",
+                     font=ctk.CTkFont(family="Consolas", size=11),
+                     text_color=self.colors['text_muted']).pack(side='left', padx=4)
+
+        status_lbl = ctk.CTkLabel(win, text=self.t("cf_loading"), font=ctk.CTkFont(size=12),
+                                  text_color=self.colors['text_muted'])
+        status_lbl.pack(anchor='w', padx=20, pady=(0, 4))
+
+        list_frame = ctk.CTkScrollableFrame(win, fg_color=self.colors['card_bg'], corner_radius=12,
+                                            border_width=1, border_color=self.colors['card_border'])
+        list_frame.pack(fill='both', expand=True, padx=12, pady=6)
+
+        busy = {'value': False}  # CNC'ye aynı anda tek istek (oturum kilidini önler)
+
+        def alive():
+            try:
+                return bool(win.winfo_exists())
+            except Exception:
+                return False
+
+        def ui(fn):
+            self.root.after(0, lambda: fn() if alive() else None)
+
+        def render(files):
+            for w in list_frame.winfo_children():
+                w.destroy()
+            if not files:
+                ctk.CTkLabel(list_frame, text=self.t("cf_no_files"), font=ctk.CTkFont(size=13),
+                             text_color=self.colors['text_dim']).pack(pady=20)
+            for fname in files:
+                row = ctk.CTkFrame(list_frame, fg_color="transparent")
+                row.pack(fill='x', padx=4, pady=2)
+                ctk.CTkButton(row, text=self.t("btn_delete"), width=70, height=28, corner_radius=6,
+                              fg_color=self.colors['danger'], hover_color=self.colors['danger_hover'],
+                              text_color="#ffffff", font=ctk.CTkFont(size=12, weight="bold"),
+                              command=lambda f=fname: confirm_delete(f)).pack(side='right', padx=(4, 8))
+                ctk.CTkLabel(row, text=fname, font=ctk.CTkFont(family="Consolas", size=13),
+                             text_color=self.colors['text'], anchor='w').pack(
+                    side='left', fill='x', expand=True, padx=(8, 0))
+            status_lbl.configure(text=self.t("cf_file_count").format(count=len(files)))
+
+        def load():
+            if busy['value']:
+                return
+            busy['value'] = True
+            status_lbl.configure(text=self.t("cf_loading"))
+
+            def work():
+                try:
+                    files = focas_raw_list_cf_files(machine['host'], machine['port'])
+                    ui(lambda: render(files))
+                except Exception:
+                    ui(lambda: status_lbl.configure(text=self.t("cf_list_error")))
+                finally:
+                    busy['value'] = False
+
+            threading.Thread(target=work, daemon=True).start()
+
+        def confirm_delete(fname):
+            if busy['value']:
+                return
+            if not messagebox.askyesno(self.t("title_confirm"),
+                                       self.t("msg_confirm_delete_cf_file").format(filename=fname),
+                                       parent=win, icon='warning'):
+                return
+            busy['value'] = True
+            status_lbl.configure(text=self.t("cf_deleting").format(filename=fname))
+
+            def work():
+                try:
+                    code = focas_raw_cf_delete(machine['host'], machine['port'], fname)
+                except Exception:
+                    code = None
+                busy['value'] = False
+                if code == 0:
+                    self.log_transfer(machine['name'], fname, self.t("status_deleted"), "CF_TEXT")
+                    time.sleep(0.5)
+                    ui(load)
+                    return
+                if code == 5:
+                    msg = self.t("msg_cf_delete_not_found").format(filename=fname)
+                elif code is None:
+                    msg = self.t("msg_cf_delete_no_response").format(filename=fname)
+                else:
+                    msg = self.t("msg_cf_delete_failed_code").format(filename=fname, code=code)
+                ui(lambda: (status_lbl.configure(text=msg),
+                            messagebox.showerror(self.t("title_error"), msg, parent=win)))
+
+            threading.Thread(target=work, daemon=True).start()
+
+        btn_row = ctk.CTkFrame(win, fg_color="transparent")
+        btn_row.pack(fill='x', padx=12, pady=(4, 12))
+        ctk.CTkButton(btn_row, text=self.t("btn_refresh"), height=36, corner_radius=6,
+                      fg_color=self.colors['primary'], hover_color=self.colors['primary_hover'],
+                      text_color="#ffffff", font=ctk.CTkFont(size=13, weight="bold"),
+                      command=load).pack(side='left')
+        ctk.CTkButton(btn_row, text=self.t("btn_close"), height=36, width=90, corner_radius=6,
+                      fg_color=self.colors['secondary'], hover_color=self.colors['secondary_hover'],
+                      text_color=self.colors['text'], font=ctk.CTkFont(size=12),
+                      command=win.destroy).pack(side='right')
+
+        load()
 
     def focas_mem_delete_and_transfer(self, machine, o_num):
         """Silinen O numarasına seçili dosyayı transfer et"""
