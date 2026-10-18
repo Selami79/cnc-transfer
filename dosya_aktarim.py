@@ -34,6 +34,22 @@ except Exception as e:
 # ---- Raw FOCAS TCP Protokolü (CF Kart erişimi için) ----
 FOCAS_MAGIC = b'\xa0\xa0\xa0\xa0'
 
+def sanitize_ascii(text):
+    """NC programı ve dosya adları için Türkçe/özel karakterleri güvenli ASCII'ye çevir.
+    Çökme (UnicodeEncodeError) riskini tamamen ortadan kaldırır.
+    """
+    if isinstance(text, bytes):
+        return text.decode('latin-1', errors='replace').encode('ascii', errors='replace')
+    tr_map = {
+        'ç': 'c', 'ğ': 'g', 'ı': 'i', 'ö': 'o', 'ş': 's', 'ü': 'u',
+        'Ç': 'C', 'Ğ': 'G', 'İ': 'I', 'Ö': 'O', 'Ş': 'S', 'Ü': 'U',
+    }
+    for tr, en in tr_map.items():
+        text = text.replace(tr, en)
+    # Diğer aksanlı/özel karakterleri ayrıştır ve ASCII dışını temizle
+    norm = unicodedata.normalize('NFKD', text)
+    return norm.encode('ascii', errors='replace')
+
 def _recv_exact(sock, n):
     """TCP akışından tam n bayt oku (fragmantasyona dayanıklı)"""
     buf = bytearray()
@@ -57,14 +73,20 @@ def focas_raw_connect(ip, port, timeout=10):
     """Raw TCP ile FOCAS bağlantısı aç"""
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.settimeout(timeout)
-    sock.connect((ip, port))
-    # FOCAS handshake (0x0101)
-    pkt = FOCAS_MAGIC + b'\x00\x01\x01\x01\x00\x02\x00\x01'
-    sock.sendall(pkt)
-    resp = sock.recv(65536)
-    if resp and len(resp) >= 8 and resp[6:8] == b'\x01\x02':
-        return sock
-    sock.close()
+    try:
+        sock.connect((ip, port))
+        # FOCAS handshake (0x0101)
+        pkt = FOCAS_MAGIC + b'\x00\x01\x01\x01\x00\x02\x00\x01'
+        sock.sendall(pkt)
+        resp = sock.recv(65536)
+        if resp and len(resp) >= 8 and resp[6:8] == b'\x01\x02':
+            return sock
+    except Exception:
+        pass
+    try:
+        sock.close()
+    except Exception:
+        pass
     return None
 
 def focas_raw_disconnect(sock):
@@ -91,7 +113,7 @@ def focas_raw_write_file(sock, filename, file_data, progress_callback=None, over
     """
     # Write Start (0x1101)
     prefix = "10000:" if overwrite else "0:"
-    drive_name = f"{prefix}{filename}".encode('ascii')
+    drive_name = sanitize_ascii(f"{prefix}{filename}")
     name_padded = drive_name + b'\x00' * (512 - len(drive_name))
     body = b'\x80\x09' + b'\x00\x01' + name_padded
     pkt = FOCAS_MAGIC + b'\x00\x01' + b'\x11\x01' + struct.pack('>H', len(body)) + body
@@ -137,7 +159,7 @@ def focas_raw_read_file(sock, filename, progress_callback=None):
     Protokol: 0x1501 (start) -> 0x1604 (data chunks) -> 0x1701 (complete)
     """
     # Read Start (0x1501)
-    drive_name = f"0:{filename}".encode('ascii')
+    drive_name = sanitize_ascii(f"0:{filename}")
     name_padded = drive_name + b'\x00' * (512 - len(drive_name))
     body = b'\x80\x09' + b'\x00\x01' + name_padded
     pkt = FOCAS_MAGIC + b'\x00\x01' + b'\x15\x01' + struct.pack('>H', len(body)) + body
@@ -287,7 +309,7 @@ def _cf_delete_packet(filename):
     PTT kaydından: a0a0a0a0 0001 2101 003e | 0001 003c 0001 0001 02d7
                    00000003 + 12x00 | 00000020 | isim[32] (null-term)
     """
-    name = filename.encode('ascii')
+    name = sanitize_ascii(filename)
     if not name or len(name) > 31:
         raise ValueError(filename)
     body = (b'\x00\x01\x00\x3c\x00\x01\x00\x01\x02\xd7'
@@ -674,6 +696,8 @@ class CNCTransferApp:
     def __init__(self, root):
         self.root = root
         self.lang = "tr"
+        self._save_lock = threading.Lock()
+        self._checking_status = False
 
         # CustomTkinter ayarları
         ctk.set_appearance_mode("light")
@@ -867,19 +891,23 @@ class CNCTransferApp:
             return default
     
     def save_machines(self, machines=None):
-        """Makineleri JSON dosyasına kaydet"""
+        """Makineleri JSON dosyasına güvenli/atomik kaydet (threading lock korumalı)"""
         if machines is None:
             machines = self.machines
-        try:
-            # Sadece 1 adet .bak dosyası oluştur/güncelle
-            if os.path.exists(self.config_file):
-                shutil.copy2(self.config_file, self.config_file + ".bak")
-            
-            with open(self.config_file, 'w', encoding='utf-8') as f:
-                json.dump(machines, f, indent=4, ensure_ascii=False)
-        except Exception as e:
-            print(f"Dosya kaydetme hatası: {e}")
-    
+        with self._save_lock:
+            try:
+                # Sadece 1 adet .bak dosyası oluştur/güncelle
+                if os.path.exists(self.config_file):
+                    shutil.copy2(self.config_file, self.config_file + ".bak")
+                
+                # Atomik yazma: önce geçici dosyaya yaz, sonra tek hamlede değiştir (replace)
+                tmp_file = self.config_file + ".tmp"
+                with open(tmp_file, 'w', encoding='utf-8') as f:
+                    json.dump(machines, f, indent=4, ensure_ascii=False)
+                os.replace(tmp_file, self.config_file)
+            except Exception as e:
+                print(f"Dosya kaydetme hatası: {e}")
+
     def normalize_filename(self, filename):
         """Dosya adını CNC uyumlu hale getir"""
         # Türkçe karakterleri değiştir
@@ -1542,7 +1570,7 @@ class CNCTransferApp:
                 # Doğru formatı oluştur: %\n<dosya_adı>\n...gövde...\n%\n
                 file_content = f'%\n<{prog_name}>\n{body}\n%\n'
 
-                file_data = file_content.encode('ascii')
+                file_data = sanitize_ascii(file_content)
                 file_size = len(file_data)
                 chunk_size = 1280
                 sent = 0
@@ -1630,7 +1658,7 @@ class CNCTransferApp:
 
             # %%\n...içerik...\n%%\n formatında oluştur
             file_content = f'%%\n{body}\n%%\n'
-            file_data = file_content.encode('ascii')
+            file_data = sanitize_ascii(file_content)
 
             # Transfer başlat (cnc_dwnstart3, type=0 = NC program)
             ret = FOCAS_DLL.cnc_dwnstart3(handle, ctypes.c_short(0))
@@ -2126,35 +2154,42 @@ class CNCTransferApp:
         threading.Thread(target=do_backup, daemon=True).start()
 
     def check_machine_status(self):
-        """Tüm makinelerin durumunu kontrol et"""
-        def check():
-            changed = False
-            for machine in self.machines['machines']:
-                protocol = machine.get('protocol', 'ftp')
-                old_status = machine['status']
-                try:
-                    if protocol in ('focas', 'focas_mem'):
-                        if self.focas_check_status(machine):
-                            machine['status'] = 'online'
-                        else:
-                            machine['status'] = 'offline'
-                    else:
-                        ftp = ftplib.FTP()
-                        ftp.connect(machine['host'], machine['port'], timeout=5)
-                        ftp.login(machine['user'], machine['password'])
-                        ftp.cwd(machine['directory'])
-                        ftp.quit()
-                        machine['status'] = 'online'
-                except Exception as e:
-                    machine['status'] = 'offline'
-                if machine['status'] != old_status:
-                    changed = True
+        """Tüm makinelerin durumunu kontrol et (birikmeyi önleyen kilit ile)"""
+        if getattr(self, '_checking_status', False):
+            return
+        self._checking_status = True
 
-            # Sadece durum degistiyse GUI'yi guncelle
-            if changed:
-                self.root.after(0, self.create_machine_buttons)
-                self.root.after(0, self.refresh_machines_list)
-                self.root.after(0, self.save_machines)
+        def check():
+            try:
+                changed = False
+                for machine in self.machines['machines']:
+                    protocol = machine.get('protocol', 'ftp')
+                    old_status = machine['status']
+                    try:
+                        if protocol in ('focas', 'focas_mem'):
+                            if self.focas_check_status(machine):
+                                machine['status'] = 'online'
+                            else:
+                                machine['status'] = 'offline'
+                        else:
+                            ftp = ftplib.FTP()
+                            ftp.connect(machine['host'], machine['port'], timeout=5)
+                            ftp.login(machine['user'], machine['password'])
+                            ftp.cwd(machine['directory'])
+                            ftp.quit()
+                            machine['status'] = 'online'
+                    except Exception:
+                        machine['status'] = 'offline'
+                    if machine['status'] != old_status:
+                        changed = True
+
+                # Sadece durum degistiyse GUI'yi guncelle
+                if changed:
+                    self.root.after(0, self.create_machine_buttons)
+                    self.root.after(0, self.refresh_machines_list)
+                    self.root.after(0, self.save_machines)
+            finally:
+                self._checking_status = False
 
         threading.Thread(target=check, daemon=True).start()
     
