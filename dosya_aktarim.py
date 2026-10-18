@@ -662,6 +662,13 @@ class CNCTransferApp:
         },
         "status_deleted": {"tr": "SILINDI", "en": "DELETED"},
         "btn_close": {"tr": "Kapat", "en": "Close"},
+
+        # Post-transfer close prompt
+        "dlg_transfer_success_title": {"tr": "Transfer Başarılı", "en": "Transfer Successful"},
+        "msg_prompt_close_app": {
+            "tr": "Uygulamayı kapatmak istiyor musunuz?",
+            "en": "Do you want to close the application?",
+        },
     }
 
     def __init__(self, root):
@@ -1975,11 +1982,9 @@ class CNCTransferApp:
 
                 self.root.after(0, lambda: self.progress_bar.set(1.0))
                 self.root.after(0, lambda: self.progress_label.configure(text=self.t("status_transfer_complete_cnc_memory")))
-                self.root.after(0, lambda: messagebox.showinfo(
-                    self.t("title_success"),
-                    self.t("msg_sent_to_machine_as_o").format(filename=filename, o_num=o_num, machine_name=machine["name"]),
-                ))
                 self.log_transfer(machine['name'], filename, "BAŞARILI", f"O{o_num:04d} olarak CNC Bellek")
+                msg = self.t("msg_sent_to_machine_as_o").format(filename=filename, o_num=o_num, machine_name=machine["name"])
+                self.root.after(0, lambda m=msg: self.notify_transfer_success(m))
 
             except Exception as e:
                 error_msg = str(e)
@@ -2704,11 +2709,9 @@ class CNCTransferApp:
 
                     self.root.after(0, lambda: self.progress_bar.set(1.0))
                     self.root.after(0, lambda: self.progress_label.configure(text=self.t("status_transfer_complete_cnc_memory")))
-                    self.root.after(0, lambda: messagebox.showinfo(
-                        self.t("title_success"),
-                        self.t("msg_transfer_complete_cnc_memory").format(filename=filename, machine_name=machine["name"]),
-                    ))
                     self.log_transfer(machine['name'], filename, "BAŞARILI", "Hedef: CNC Bellek")
+                    msg = self.t("msg_transfer_complete_cnc_memory").format(filename=filename, machine_name=machine["name"])
+                    self.root.after(0, lambda m=msg: self.notify_transfer_success(m))
 
                 except Exception as e:
                     error_msg = str(e)
@@ -2766,11 +2769,9 @@ class CNCTransferApp:
 
                     self.root.after(0, lambda: self.progress_bar.set(1.0))
                     self.root.after(0, lambda: self.progress_label.configure(text=self.t("status_transfer_complete_cf_text")))
-                    self.root.after(0, lambda: messagebox.showinfo(
-                        self.t("title_success"),
-                        self.t("msg_transfer_complete_cf_text").format(filename=filename, machine_name=machine["name"]),
-                    ))
                     self.log_transfer(machine['name'], filename, "BAŞARILI", "Hedef: CF_TEXT")
+                    msg = self.t("msg_transfer_complete_cf_text").format(filename=filename, machine_name=machine["name"])
+                    self.root.after(0, lambda m=msg: self.notify_transfer_success(m))
 
                 except Exception as e:
                     error_msg = str(e)
@@ -2864,13 +2865,10 @@ class CNCTransferApp:
             
             self.root.after(0, lambda: self.progress_bar.set(1.0))
             self.root.after(0, lambda: self.progress_label.configure(text=self.t("status_transfer_complete")))
-            self.root.after(0, lambda: messagebox.showinfo(
-                self.t("title_success"),
-                self.t("msg_transfer_complete_ftp").format(filename=filename, machine_name=machine["name"]),
-            ))
-            
             # Başarılı logu
             self.log_transfer(machine['name'], filename, "BAŞARILI")
+            msg = self.t("msg_transfer_complete_ftp").format(filename=filename, machine_name=machine["name"])
+            self.root.after(0, lambda m=msg: self.notify_transfer_success(m))
             
         except Exception as e:
             error_msg = str(e)
@@ -2890,6 +2888,16 @@ class CNCTransferApp:
                 return f"{size:.1f} {unit}"
             size /= 1024
         return f"{size:.1f} TB"
+
+    def notify_transfer_success(self, success_message):
+        """Transfer başarılı mesajı ver ve uygulamayı kapatmak isteyip istemediğini sor."""
+        full_msg = f"{success_message}\n\n{self.t('msg_prompt_close_app')}"
+        title = self.t("dlg_transfer_success_title")
+        if messagebox.askyesno(title, full_msg, icon='question', parent=self.root):
+            try:
+                self.root.destroy()
+            except Exception:
+                pass
 
 def main():
     root = ctk.CTk()
